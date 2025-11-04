@@ -4,6 +4,8 @@ const app = express();
 
 // Import routes
 const usuariosRoutes = require('./routes/usuarios');
+const oferentesRoutes = require('./routes/oferentes');
+const serviciosRoutes = require('./routes/servicios');
 
 // Middleware
 app.use(cors());
@@ -15,12 +17,16 @@ app.get('/', (req, res) => {
         message: 'ARROYO SECO API running',
         version: '1.0.0',
         endpoints: {
-            usuarios: '/api/usuarios'
+            usuarios: '/api/usuarios',
+            oferentes: '/api/oferentes',
+            servicios: '/api/servicios'
         }
     });
 });
 
 app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/oferentes', oferentesRoutes);
+app.use('/api/servicios', serviciosRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
