@@ -6,6 +6,7 @@ const app = express();
 const usuariosRoutes = require('./routes/usuarios');
 const oferentesRoutes = require('./routes/oferentes');
 const serviciosRoutes = require('./routes/servicios');
+const productosRoutes = require('./routes/productos');
 
 // Middleware
 app.use(cors());
@@ -19,7 +20,8 @@ app.get('/', (req, res) => {
         endpoints: {
             usuarios: '/api/usuarios',
             oferentes: '/api/oferentes',
-            servicios: '/api/servicios'
+            servicios: '/api/servicios',
+            productos: '/api/productos' 
         }
     });
 });
@@ -27,8 +29,9 @@ app.get('/', (req, res) => {
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/oferentes', oferentesRoutes);
 app.use('/api/servicios', serviciosRoutes);
+app.use('/api/productos', productosRoutes);
 
-// Error handling middleware
+
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ error: 'Something went wrong!' });
