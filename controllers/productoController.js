@@ -2,6 +2,56 @@
 const Producto = require('../models/Producto');
 const db = require('../config/db');
 
+// =====================================================
+// MÉTODOS PÚBLICOS (MARKETPLACE)
+// =====================================================
+
+// Obtener todos los productos (para admin o público)
+exports.getAllProductos = async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        p.id_producto,
+        p.nombre,
+        p.descripcion,
+        p.precio,
+        p.inventario,
+        p.imagenes,
+        p.esta_disponible,
+        p.id_categoria,
+        p.id_oferente,
+        o.nombre_negocio,
+        o.direccion,
+        o.tipo as tipo_oferente,
+        c.nombre as categoria_nombre,
+        c.tipo as categoria_tipo
+      FROM PRODUCTO p
+      INNER JOIN OFERENTE o ON p.id_oferente = o.id_oferente
+      LEFT JOIN CATEGORIA c ON p.id_categoria = c.id_categoria
+      ORDER BY p.id_producto DESC
+    `;
+    
+    const [productos] = await db.query(query);
+    
+    const productosFormateados = productos.map(p => ({
+      ...p,
+      imagenes: p.imagenes ? JSON.parse(p.imagenes) : []
+    }));
+    
+    res.json({
+      success: true,
+      productos: productosFormateados
+    });
+  } catch (error) {
+    console.error('Error al obtener todos los productos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener productos',
+      error: error.message
+    });
+  }
+};
+
 // Obtener productos por categoría (gastronomica, artesanal o todos)
 exports.getProductosPorTipo = async (req, res) => {
   try {
@@ -48,7 +98,7 @@ exports.getProducto = async (req, res) => {
   }
 };
 
-// Obtener servicios de restaurante (para la página de Gastronomía)
+// Obtener servicios de restaurante
 exports.getServiciosRestaurante = async (req, res) => {
   try {
     const query = `
@@ -90,17 +140,118 @@ exports.getServiciosRestaurante = async (req, res) => {
   }
 };
 
-// Crear producto (requiere autenticación del oferente)
+// Verificar disponibilidad de stock
+exports.verificarStock = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cantidad = 1 } = req.query;
+    
+    const disponible = await Producto.checkStock(id, parseInt(cantidad));
+    
+    res.json({
+      success: true,
+      disponible
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error al verificar stock',
+      error: error.message
+    });
+  }
+};
+
+// =====================================================
+// MÉTODOS PROTEGIDOS (REQUIEREN AUTENTICACIÓN)
+// =====================================================
+
+// Obtener productos del oferente autenticado
+exports.getMisProductos = async (req, res) => {
+  try {
+    // req.oferente viene del middleware de autenticación
+    const id_oferente = req.oferente.id_oferente;
+    
+    const query = `
+      SELECT 
+        p.*,
+        c.nombre as categoria_nombre,
+        c.tipo as categoria_tipo
+      FROM PRODUCTO p
+      LEFT JOIN CATEGORIA c ON p.id_categoria = c.id_categoria
+      WHERE p.id_oferente = ?
+      ORDER BY p.id_producto DESC
+    `;
+    
+    const [productos] = await db.query(query, [id_oferente]);
+    
+    const productosFormateados = productos.map(p => ({
+      ...p,
+      imagenes: p.imagenes ? JSON.parse(p.imagenes) : []
+    }));
+    
+    res.json({
+      success: true,
+      data: productosFormateados
+    });
+  } catch (error) {
+    console.error('Error al obtener mis productos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener tus productos',
+      error: error.message
+    });
+  }
+};
+
+// Crear nuevo producto
 exports.crearProducto = async (req, res) => {
   const connection = await db.getConnection();
   
   try {
-    const productoData = {
-      ...req.body,
-      id_oferente: req.user.id_oferente // Del middleware de auth
-    };
+    const {
+      nombre,
+      descripcion,
+      precio,
+      inventario,
+      imagenes,
+      id_categoria,
+      id_servicio
+    } = req.body;
+    
+    // Validaciones básicas
+    if (!nombre || nombre.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'El nombre del producto debe tener al menos 3 caracteres'
+      });
+    }
+    
+    if (!precio || precio <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El precio debe ser mayor a 0'
+      });
+    }
+    
+    if (inventario && inventario < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El inventario no puede ser negativo'
+      });
+    }
     
     await connection.beginTransaction();
+    
+    const productoData = {
+      id_oferente: req.oferente.id_oferente,
+      nombre,
+      descripcion,
+      precio,
+      inventario: inventario || 0,
+      imagenes: imagenes || [],
+      id_categoria,
+      id_servicio: id_servicio || null
+    };
     
     const id_producto = await Producto.create(productoData);
     
@@ -128,12 +279,49 @@ exports.crearProducto = async (req, res) => {
 exports.actualizarProducto = async (req, res) => {
   try {
     const { id } = req.params;
+    const id_oferente = req.oferente.id_oferente;
+    
+    // Verificar que el producto pertenece al oferente
+    const query = 'SELECT id_oferente FROM PRODUCTO WHERE id_producto = ?';
+    const [productos] = await db.query(query, [id]);
+    
+    if (productos.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado'
+      });
+    }
+    
+    if (productos[0].id_oferente !== id_oferente) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permiso para actualizar este producto'
+      });
+    }
+    
+    // Validaciones
+    const { precio, inventario } = req.body;
+    
+    if (precio !== undefined && precio <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El precio debe ser mayor a 0'
+      });
+    }
+    
+    if (inventario !== undefined && inventario < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El inventario no puede ser negativo'
+      });
+    }
+    
     const actualizado = await Producto.update(id, req.body);
     
     if (!actualizado) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        message: 'Producto no encontrado o sin cambios'
+        message: 'No se pudo actualizar el producto'
       });
     }
     
@@ -142,6 +330,7 @@ exports.actualizarProducto = async (req, res) => {
       message: 'Producto actualizado exitosamente'
     });
   } catch (error) {
+    console.error('Error al actualizar producto:', error);
     res.status(500).json({
       success: false,
       message: 'Error al actualizar producto',
@@ -154,12 +343,32 @@ exports.actualizarProducto = async (req, res) => {
 exports.eliminarProducto = async (req, res) => {
   try {
     const { id } = req.params;
-    const eliminado = await Producto.delete(id);
+    const id_oferente = req.oferente.id_oferente;
     
-    if (!eliminado) {
+    // Verificar que el producto pertenece al oferente
+    const query = 'SELECT id_oferente FROM PRODUCTO WHERE id_producto = ?';
+    const [productos] = await db.query(query, [id]);
+    
+    if (productos.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Producto no encontrado'
+      });
+    }
+    
+    if (productos[0].id_oferente !== id_oferente) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permiso para eliminar este producto'
+      });
+    }
+    
+    const eliminado = await Producto.delete(id);
+    
+    if (!eliminado) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo eliminar el producto'
       });
     }
     
@@ -168,6 +377,7 @@ exports.eliminarProducto = async (req, res) => {
       message: 'Producto eliminado exitosamente'
     });
   } catch (error) {
+    console.error('Error al eliminar producto:', error);
     res.status(500).json({
       success: false,
       message: 'Error al eliminar producto',
@@ -176,22 +386,68 @@ exports.eliminarProducto = async (req, res) => {
   }
 };
 
-// Verificar disponibilidad de stock
-exports.verificarStock = async (req, res) => {
+// Actualizar inventario
+exports.actualizarInventario = async (req, res) => {
   try {
     const { id } = req.params;
-    const { cantidad } = req.query;
+    const { cantidad } = req.body;
+    const id_oferente = req.oferente.id_oferente;
     
-    const disponible = await Producto.checkStock(id, parseInt(cantidad));
+    if (!cantidad || isNaN(cantidad)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La cantidad debe ser un número válido'
+      });
+    }
+    
+    // Verificar que el producto pertenece al oferente
+    const query = 'SELECT id_oferente, inventario FROM PRODUCTO WHERE id_producto = ?';
+    const [productos] = await db.query(query, [id]);
+    
+    if (productos.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado'
+      });
+    }
+    
+    if (productos[0].id_oferente !== id_oferente) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permiso para actualizar el inventario de este producto'
+      });
+    }
+    
+    const nuevoInventario = productos[0].inventario + parseInt(cantidad);
+    
+    if (nuevoInventario < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'El inventario no puede ser negativo'
+      });
+    }
+    
+    const actualizado = await Producto.updateInventario(id, cantidad);
+    
+    if (!actualizado) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo actualizar el inventario'
+      });
+    }
     
     res.json({
       success: true,
-      disponible
+      message: 'Inventario actualizado exitosamente',
+      data: {
+        nuevo_inventario: nuevoInventario
+      }
     });
   } catch (error) {
+    console.error('Error al actualizar inventario:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al verificar stock',
+      message: 'Error al actualizar inventario',
       error: error.message
     });
   }

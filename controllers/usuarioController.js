@@ -1,9 +1,12 @@
 const Usuario = require('../models/Usuario');
+const Codigo2FA = require('../models/codigo2FA');
+const emailService = require('../services/emailService');
+const jwt = require('jsonwebtoken');
 
 // Allowed roles
 const ROLES_VALIDOS = ['turista', 'oferente', 'admin'];
 
-// CREATE - Register new user
+// CREATE - Register new user (with 2FA)
 exports.crearUsuario = async (req, res) => {
     try {
         const { correo, contrasena, nombre, rol } = req.body;
@@ -48,9 +51,14 @@ exports.crearUsuario = async (req, res) => {
         // Create user
         const usuario = await Usuario.create({ correo, contrasena, nombre, rol });
 
+        // Generate and send 2FA code
+        const codigo = await Codigo2FA.create(usuario.id_usuario);
+        await emailService.send2FACode(correo, codigo, nombre);
+
         res.status(201).json({
-            message: 'Usuario creado exitosamente',
-            usuario
+            message: 'Usuario creado. Por favor verifica tu correo',
+            requiresVerification: true,
+            userId: usuario.id_usuario
         });
     } catch (error) {
         console.error('Error creating user:', error);
@@ -58,7 +66,130 @@ exports.crearUsuario = async (req, res) => {
     }
 };
 
-// READ - Get all users
+// LOGIN - Step 1: Verify credentials and send 2FA code
+exports.loginUsuario = async (req, res) => {
+    try {
+        const { correo, contrasena } = req.body;
+        
+        console.log('Login attempt for:', correo);
+        
+        if (!correo || !contrasena) {
+            return res.status(400).json({
+                error: 'Correo y contraseña son requeridos'
+            });
+        }
+        
+        const usuario = await Usuario.findByEmail(correo);
+        if (!usuario) {
+            console.log('User not found:', correo);
+            return res.status(401).json({
+                error: 'Credenciales inválidas'
+            });
+        }
+
+        const isPasswordValid = await Usuario.verifyPassword(contrasena, usuario.contrasena_hash);
+        if (!isPasswordValid) {
+            console.log('Invalid password for:', correo);
+            return res.status(401).json({
+                error: 'Credenciales inválidas'
+            });
+        }
+
+        // Generate and send 2FA code
+        const codigo = await Codigo2FA.create(usuario.id_usuario);
+        await emailService.send2FACode(correo, codigo, usuario.nombre);
+        
+        res.json({
+            message: 'Código de verificación enviado a tu correo',
+            requiresVerification: true,
+            userId: usuario.id_usuario
+        });
+    } catch (error) {
+        console.error('Error during login:', error);
+        res.status(500).json({ error: 'Error al iniciar sesión' });
+    }
+};
+
+// LOGIN - Step 2: Verify 2FA code and issue token
+exports.verify2FA = async (req, res) => {
+    try {
+        const { userId, codigo } = req.body;
+
+        if (!userId || !codigo) {
+            return res.status(400).json({
+                error: 'Usuario y código son requeridos'
+            });
+        }
+
+        // Verify the 2FA code
+        const isValid = await Codigo2FA.verify(userId, codigo);
+        
+        if (!isValid) {
+            return res.status(401).json({
+                error: 'Código inválido o expirado'
+            });
+        }
+
+        // Get user info
+        const usuario = await Usuario.findById(userId);
+        
+        if (!usuario) {
+            return res.status(404).json({
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { id: usuario.id_usuario, correo: usuario.correo, rol: usuario.rol },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+        
+        res.json({
+            message: 'Autenticación exitosa',
+            token: token,
+            user: {
+                id_usuario: usuario.id_usuario,
+                correo: usuario.correo,
+                nombre: usuario.nombre,
+                rol: usuario.rol,
+                esta_activo: usuario.esta_activo
+            }
+        });
+    } catch (error) {
+        console.error('Error verifying 2FA:', error);
+        res.status(500).json({ error: 'Error al verificar el código' });
+    }
+};
+
+// Resend 2FA code
+exports.resend2FACode = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Usuario requerido' });
+        }
+
+        const usuario = await Usuario.findById(userId);
+        
+        if (!usuario) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        // Generate and send new code
+        const codigo = await Codigo2FA.create(userId);
+        await emailService.send2FACode(usuario.correo, codigo, usuario.nombre);
+
+        res.json({ message: 'Código reenviado exitosamente' });
+    } catch (error) {
+        console.error('Error resending 2FA code:', error);
+        res.status(500).json({ error: 'Error al reenviar el código' });
+    }
+};
+
+// ... (keep all other existing functions)
 exports.obtenerUsuarios = async (req, res) => {
     try {
         const usuarios = await Usuario.findAll();
@@ -72,62 +203,6 @@ exports.obtenerUsuarios = async (req, res) => {
     }
 };
 
-// LOGIN - User login
-exports.loginUsuario = async (req, res) => {
-    try {
-        const { correo, contrasena } = req.body;
-        
-        console.log('Login attempt for:', correo); // Debug log
-        
-        if (!correo || !contrasena) {
-            return res.status(400).json({
-                error: 'Correo y contraseña son requeridos'
-            });
-        }
-        
-        const usuario = await Usuario.findByEmail(correo);
-        if (!usuario) {
-            console.log('User not found:', correo); // Debug log
-            return res.status(401).json({
-                error: 'Credenciales inválidas'
-            });
-        }
-
-        const isPasswordValid = await Usuario.verifyPassword(contrasena, usuario.contrasena_hash);
-        if (!isPasswordValid) {
-            console.log('Invalid password for:', correo); // Debug log
-            return res.status(401).json({
-                error: 'Credenciales inválidas'
-            });
-        }
-        
-        // Generate JWT token (you'll need to install jsonwebtoken)
-        const jwt = require('jsonwebtoken');
-        const token = jwt.sign(
-            { id: usuario.id_usuario, correo: usuario.correo, rol: usuario.rol },
-            process.env.JWT_SECRET || 'your-secret-key', // Use environment variable
-            { expiresIn: '24h' }
-        );
-        
-        res.json({
-            message: 'Login exitoso',
-            token: token,  // ✅ Add token
-            user: {  // ✅ Change "usuario" to "user"
-                id_usuario: usuario.id_usuario,
-                correo: usuario.correo,
-                nombre: usuario.nombre,
-                rol: usuario.rol,
-                esta_activo: usuario.esta_activo
-            }
-        });
-    } catch (error) {
-        console.error('Error during login:', error);
-        res.status(500).json({ error: 'Error al iniciar sesión' });
-    }
-};
-
-
-// READ - Get user by ID
 exports.obtenerUsuarioPorId = async (req, res) => {
     try {
         const usuario = await Usuario.findById(req.params.id);
@@ -143,19 +218,16 @@ exports.obtenerUsuarioPorId = async (req, res) => {
     }
 };
 
-// UPDATE - Update user
 exports.actualizarUsuario = async (req, res) => {
     try {
         const { correo, contrasena, nombre, rol, esta_activo } = req.body;
         const userId = req.params.id;
 
-        // Check if user exists
         const existingUser = await Usuario.findById(userId);
         if (!existingUser) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
         }
 
-        // Validate email format if provided
         if (correo) {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(correo)) {
@@ -164,7 +236,6 @@ exports.actualizarUsuario = async (req, res) => {
                 });
             }
 
-            // Check if email is already taken by another user
             const emailExists = await Usuario.emailExists(correo, userId);
             if (emailExists) {
                 return res.status(409).json({ 
@@ -173,21 +244,18 @@ exports.actualizarUsuario = async (req, res) => {
             }
         }
 
-        // Validate role if provided
         if (rol && !ROLES_VALIDOS.includes(rol)) {
             return res.status(400).json({ 
                 error: `Rol inválido. Debe ser: ${ROLES_VALIDOS.join(', ')}` 
             });
         }
 
-        // Validate password strength if provided
         if (contrasena && contrasena.length < 6) {
             return res.status(400).json({ 
                 error: 'La contraseña debe tener al menos 6 caracteres' 
             });
         }
 
-        // Update user
         const usuario = await Usuario.update(userId, { 
             correo, 
             contrasena, 
@@ -212,7 +280,6 @@ exports.actualizarUsuario = async (req, res) => {
     }
 };
 
-// DELETE - Delete user
 exports.eliminarUsuario = async (req, res) => {
     try {
         const deleted = await Usuario.delete(req.params.id);
