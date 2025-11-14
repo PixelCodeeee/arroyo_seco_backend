@@ -1,83 +1,76 @@
 const Oferente = require('../models/Oferente');
 const Usuario = require('../models/Usuario');
 
-// CREATE crear oferente
+
 exports.crearOferente = async (req, res) => {
     try {
-        const { id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad } = req.body;
+        const { id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad, imagen, telefono } = req.body;
 
-        // validar campos requeridos
         if (!id_usuario || !nombre_negocio || !tipo) {
-            return res.status(400).json({ 
-                error: 'Los campos id_usuario, nombre_negocio y tipo son requeridos' 
+            return res.status(400).json({
+                error: 'id_usuario, nombre_negocio y tipo son requeridos'
             });
         }
 
-        // valida tipo
-        const tiposValidos = ['restaurante', 'artesanal'];
-        if (!tiposValidos.includes(tipo)) {
-            return res.status(400).json({ 
-                error: `Tipo inválido. Debe ser: ${tiposValidos.join(', ')}` 
-            });
-        }
-
-        // verificar si existe usuario
         const usuario = await Usuario.findById(id_usuario);
         if (!usuario) {
-            return res.status(404).json({ 
-                error: 'El usuario especificado no existe' 
-            });
+            return res.status(404).json({ error: 'El usuario no existe' });
         }
 
-        // si el rol es oferent 
         if (usuario.rol !== 'oferente') {
-            return res.status(400).json({ 
-                error: 'El usuario debe tener rol de "oferente"' 
-            });
+            return res.status(400).json({ error: 'El usuario debe ser oferente' });
         }
 
-        // si el usuario ya tiene un oferente
-        const existingOferente = await Oferente.findByUserId(id_usuario);
-        if (existingOferente) {
-            return res.status(409).json({ 
-                error: 'Este usuario ya tiene un perfil de oferente' 
-            });
+        const exists = await Oferente.findByUserId(id_usuario);
+        if (exists) {
+            return res.status(409).json({ error: 'Este usuario ya tiene un oferente' });
         }
 
-        // crear oferente 
-        const oferente = await Oferente.create({ 
-            id_usuario, 
-            nombre_negocio, 
-            direccion, 
-            tipo, 
-            horario_disponibilidad 
+        const nuevo = await Oferente.create({
+            id_usuario,
+            nombre_negocio,
+            direccion,
+            tipo,
+            horario_disponibilidad,
+            imagen,
+            telefono
         });
 
         res.status(201).json({
-            message: 'Oferente creado exitosamente',
-            oferente
+            message: 'Oferente creado exitosamente (pendiente)',
+            oferente: nuevo
         });
+
     } catch (error) {
         console.error('Error creating oferente:', error);
-        res.status(500).json({ error: error.message || 'Error al crear oferente' });
+        res.status(500).json({ error: error.message });
     }
 };
 
-// traer todos los oferentes
+
+
+// Obtener todos
 exports.obtenerOferentes = async (req, res) => {
     try {
-        const oferentes = await Oferente.findAll();
-        res.json({
-            total: oferentes.length,
-            oferentes
-        });
+        const { estado, tipo } = req.query;
+        let data;
+
+        if (estado || tipo) {
+            data = await Oferente.findAllWithFilters({ estado, tipo });
+        } else {
+            data = await Oferente.findAll();
+        }
+
+        res.json({ total: data.length, oferentes: data });
+
     } catch (error) {
         console.error('Error fetching oferentes:', error);
-        res.status(500).json({ error: 'Error al obtener oferentes' });
+        res.status(500).json({ error: error.message });
     }
 };
 
-// oferente por id 
+
+// Obtener por ID
 exports.obtenerOferentePorId = async (req, res) => {
     try {
         const oferente = await Oferente.findById(req.params.id);
@@ -87,89 +80,111 @@ exports.obtenerOferentePorId = async (req, res) => {
         }
 
         res.json(oferente);
+
     } catch (error) {
         console.error('Error fetching oferente:', error);
-        res.status(500).json({ error: 'Error al obtener oferente' });
+        res.status(500).json({ error: error.message });
     }
 };
 
-// traer oferente por ID de usuario
+
+// Obtener por usuario
 exports.obtenerOferentePorUsuario = async (req, res) => {
     try {
         const oferente = await Oferente.findByUserId(req.params.userId);
 
         if (!oferente) {
-            return res.status(404).json({ error: 'Oferente no encontrado para este usuario' });
+            return res.status(404).json({ error: 'No existe oferente para este usuario' });
         }
 
         res.json(oferente);
+
     } catch (error) {
         console.error('Error fetching oferente:', error);
-        res.status(500).json({ error: 'Error al obtener oferente' });
+        res.status(500).json({ error: error.message });
     }
 };
 
-//ACTUALIZAR 
+
+// Actualizar
 exports.actualizarOferente = async (req, res) => {
     try {
-        const { nombre_negocio, direccion, tipo, horario_disponibilidad } = req.body;
         const oferenteId = req.params.id;
 
-        // Check if oferente exists
-        const existingOferente = await Oferente.findById(oferenteId);
-        if (!existingOferente) {
+        const existente = await Oferente.findById(oferenteId);
+        if (!existente) {
             return res.status(404).json({ error: 'Oferente no encontrado' });
         }
 
-        // Validate tipo if provided
-        if (tipo) {
-            const tiposValidos = ['restaurante', 'artesanal'];
-            if (!tiposValidos.includes(tipo)) {
-                return res.status(400).json({ 
-                    error: `Tipo inválido. Debe ser: ${tiposValidos.join(', ')}` 
-                });
-            }
-        }
+        const { nombre_negocio, direccion, tipo, horario_disponibilidad, imagen, telefono } = req.body;
 
-        // actualizar oferente
-        const oferente = await Oferente.update(oferenteId, { 
-            nombre_negocio, 
-            direccion, 
-            tipo, 
-            horario_disponibilidad 
+        const updated = await Oferente.update(oferenteId, {
+            nombre_negocio,
+            direccion,
+            tipo,
+            horario_disponibilidad,
+            imagen,
+            telefono
         });
 
-        if (!oferente) {
-            return res.status(400).json({ 
-                error: 'No hay campos para actualizar' 
+        res.json({
+            message: 'Oferente actualizado',
+            oferente: updated
+        });
+
+    } catch (error) {
+        console.error('Error updating oferente:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+
+// Actualizar estado
+exports.actualizarEstadoOferente = async (req, res) => {
+    try {
+        const { estado } = req.body;
+        const id = req.params.id;
+
+        const estadosValidos = ['pendiente', 'aprobado', 'suspendido'];
+
+        if (!estadosValidos.includes(estado)) {
+            return res.status(400).json({
+                error: `Estado inválido. Debe ser: ${estadosValidos.join(', ')}`
             });
         }
 
-        res.json({
-            message: 'Oferente actualizado exitosamente',
-            oferente
-        });
-    } catch (error) {
-        console.error('Error updating oferente:', error);
-        res.status(500).json({ error: error.message || 'Error al actualizar oferente' });
-    }
-};
-
-// eliminar oferente
-exports.eliminarOferente = async (req, res) => {
-    try {
-        const deleted = await Oferente.delete(req.params.id);
-
-        if (!deleted) {
+        const existe = await Oferente.findById(id);
+        if (!existe) {
             return res.status(404).json({ error: 'Oferente no encontrado' });
         }
 
-        res.json({ 
-            message: 'Oferente eliminado exitosamente',
-            id_oferente: req.params.id
+        const actualizado = await Oferente.updateEstado(id, estado);
+
+        res.json({
+            message: `Estado actualizado a ${estado}`,
+            oferente: actualizado
         });
+
+    } catch (error) {
+        console.error('Error updating estado:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+
+// Eliminar
+exports.eliminarOferente = async (req, res) => {
+    try {
+        const success = await Oferente.delete(req.params.id);
+
+        if (!success) {
+            return res.status(404).json({ error: 'Oferente no encontrado' });
+        }
+
+        res.json({ message: 'Oferente eliminado', id_oferente: req.params.id });
+
     } catch (error) {
         console.error('Error deleting oferente:', error);
-        res.status(500).json({ error: 'Error al eliminar oferente' });
+        res.status(500).json({ error: error.message });
     }
 };
