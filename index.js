@@ -4,11 +4,11 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-// Import routes
+// Import SOLO las rutas, NO los controladores
 const usuariosRoutes = require('./routes/usuarios');
 const oferentesRoutes = require('./routes/oferentes');
 const serviciosRoutes = require('./routes/servicios');
-const productosRoutes = require('./routes/productos');
+const productosRoutes = require('./routes/productos'); // ✅ Solo la ruta
 const categoriasRoutes = require('./routes/categorias');
 const reservasRoutes = require('./routes/reservas');
 
