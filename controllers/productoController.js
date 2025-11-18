@@ -11,6 +11,28 @@ exports.getAllProductos = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+exports.getProductosPorOferente = async (req, res) => {
+  try {
+    const { id_oferente } = req.params;
+    const productos = await Producto.findByOferente(id_oferente);
+    res.json({ success: true, productos });
+  } catch (err) {
+    console.error('getProductosPorOferente error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+// En productoController.js, en la sección PUBLIC
+
+exports.getProductosPorOferente = async (req, res) => {
+  try {
+    const { id_oferente } = req.params;
+    const productos = await Producto.findByOferente(id_oferente);
+    res.json({ success: true, productos });
+  } catch (err) {
+    console.error('getProductosPorOferente error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
 
 exports.getProducto = async (req, res) => {
   try {
