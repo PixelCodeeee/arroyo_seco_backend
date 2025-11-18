@@ -2,201 +2,84 @@
 const db = require('../config/db');
 
 class Categoria {
-  // Obtener todas las categorías
+  static async create({ nombre, tipo }) {
+    const tiposValidos = ['gastronomica', 'artesanal'];
+    if (!tiposValidos.includes(tipo)) {
+      throw new Error('Tipo debe ser "gastronomica" o "artesanal"');
+    }
+
+    const [result] = await db.query(
+      'INSERT INTO categoria (nombre, tipo) VALUES (?, ?)',
+      [nombre.trim(), tipo]
+    );
+
+    return this.findById(result.insertId);
+  }
+
   static async findAll() {
-    const query = `
-      SELECT 
-        id_categoria,
-        nombre,
-        tipo
-      FROM CATEGORIA
-      ORDER BY tipo, nombre
-    `;
-    
-    const [categorias] = await db.query(query);
-    return categorias;
+    const [rows] = await db.query(`
+      SELECT id_categoria, nombre, tipo 
+      FROM categoria 
+      ORDER BY tipo DESC, nombre ASC
+    `);
+    return rows;
   }
 
-  // Obtener categorías por tipo
-  static async findByTipo(tipo) {
-    const query = `
-      SELECT 
-        id_categoria,
-        nombre,
-        tipo
-      FROM CATEGORIA
-      WHERE tipo = ?
-      ORDER BY nombre
-    `;
-    
-    const [categorias] = await db.query(query, [tipo]);
-    return categorias;
-  }
-
-  // Obtener categoría por ID
   static async findById(id) {
-    const query = `
-      SELECT 
-        c.id_categoria,
-        c.nombre,
-        c.tipo,
-        COUNT(DISTINCT p.id_producto) as total_productos
-      FROM CATEGORIA c
-      LEFT JOIN PRODUCTO p ON c.id_categoria = p.id_categoria AND p.esta_disponible = TRUE
-      WHERE c.id_categoria = ?
-      GROUP BY c.id_categoria
-    `;
-    
-    const [categorias] = await db.query(query, [id]);
-    
-    if (categorias.length === 0) {
-      return null;
-    }
-    
-    return categorias[0];
+    const [rows] = await db.query(
+      'SELECT * FROM categoria WHERE id_categoria = ?',
+      [id]
+    );
+    return rows.length ? rows[0] : null;
   }
 
-  // Buscar categoría por nombre
-  static async findByNombre(nombre) {
-    const query = `
-      SELECT 
-        id_categoria,
-        nombre,
-        tipo
-      FROM CATEGORIA
-      WHERE nombre = ?
-    `;
-    
-    const [categorias] = await db.query(query, [nombre]);
-    
-    if (categorias.length === 0) {
-      return null;
-    }
-    
-    return categorias[0];
+  static async findByTipo(tipo) {
+    const [rows] = await db.query(
+      'SELECT * FROM categoria WHERE tipo = ? ORDER BY nombre',
+      [tipo]
+    );
+    return rows;
   }
 
-  // Crear nueva categoría
-  static async create(categoriaData) {
-    const { nombre, tipo } = categoriaData;
-    
-    // Verificar si ya existe una categoría con el mismo nombre
-    const existente = await this.findByNombre(nombre);
-    if (existente) {
-      throw new Error('Ya existe una categoría con ese nombre');
-    }
-    
-    const query = `
-      INSERT INTO CATEGORIA (nombre, tipo)
-      VALUES (?, ?)
-    `;
-    
-    const [result] = await db.query(query, [nombre, tipo]);
-    
-    return result.insertId;
-  }
-
-  // Actualizar categoría
-  static async update(id, updateData) {
-    const { nombre, tipo } = updateData;
-    
-    const updates = [];
+  static async update(id, { nombre, tipo }) {
+    const fields = [];
     const values = [];
-    
+
     if (nombre !== undefined) {
-      // Verificar que no exista otra categoría con el mismo nombre
-      const query = 'SELECT id_categoria FROM CATEGORIA WHERE nombre = ? AND id_categoria != ?';
-      const [existentes] = await db.query(query, [nombre, id]);
-      
-      if (existentes.length > 0) {
-        throw new Error('Ya existe otra categoría con ese nombre');
-      }
-      
-      updates.push('nombre = ?');
-      values.push(nombre);
+      fields.push('nombre = ?');
+      values.push(nombre.trim());
     }
-    
     if (tipo !== undefined) {
-      updates.push('tipo = ?');
+      const tiposValidos = ['gastronomica', 'artesanal'];
+      if (!tiposValidos.includes(tipo)) throw new Error('Tipo inválido');
+      fields.push('tipo = ?');
       values.push(tipo);
     }
-    
-    if (updates.length === 0) {
-      return false;
-    }
-    
+
+    if (fields.length === 0) return this.findById(id);
+
     values.push(id);
-    
-    const updateQuery = `UPDATE CATEGORIA SET ${updates.join(', ')} WHERE id_categoria = ?`;
-    const [result] = await db.query(updateQuery, values);
-    
-    return result.affectedRows > 0;
+    await db.query(
+      `UPDATE categoria SET ${fields.join(', ')} WHERE id_categoria = ?`,
+      values
+    );
+    return this.findById(id);
   }
 
-  // Eliminar categoría
   static async delete(id) {
-    // Verificar si hay productos asociados
-    const checkQuery = `
-      SELECT COUNT(*) as count 
-      FROM PRODUCTO 
-      WHERE id_categoria = ? AND esta_disponible = TRUE
-    `;
-    
-    const [productos] = await db.query(checkQuery, [id]);
-    
-    if (productos[0].count > 0) {
-      throw new Error(`No se puede eliminar la categoría porque tiene ${productos[0].count} productos asociados`);
-    }
-    
-    const deleteQuery = 'DELETE FROM CATEGORIA WHERE id_categoria = ?';
-    const [result] = await db.query(deleteQuery, [id]);
-    
+    const [result] = await db.query(
+      'DELETE FROM categoria WHERE id_categoria = ?',
+      [id]
+    );
     return result.affectedRows > 0;
   }
 
-  // Obtener estadísticas de categorías
-  static async getEstadisticas() {
-    const query = `
-      SELECT 
-        c.id_categoria,
-        c.nombre,
-        c.tipo,
-        COUNT(DISTINCT p.id_producto) as total_productos,
-        COALESCE(SUM(p.inventario), 0) as inventario_total,
-        COALESCE(AVG(p.precio), 0) as precio_promedio
-      FROM CATEGORIA c
-      LEFT JOIN PRODUCTO p ON c.id_categoria = p.id_categoria AND p.esta_disponible = TRUE
-      GROUP BY c.id_categoria
-      ORDER BY c.tipo, c.nombre
-    `;
-    
-    const [estadisticas] = await db.query(query);
-    return estadisticas;
-  }
-
-  // Obtener productos de una categoría
-  static async getProductosPorCategoria(id_categoria) {
-    const query = `
-      SELECT 
-        p.id_producto,
-        p.nombre,
-        p.descripcion,
-        p.precio,
-        p.inventario,
-        p.imagenes,
-        o.nombre_negocio
-      FROM PRODUCTO p
-      INNER JOIN OFERENTE o ON p.id_oferente = o.id_oferente
-      WHERE p.id_categoria = ? AND p.esta_disponible = TRUE
-      ORDER BY p.nombre
-    `;
-    
-    const [productos] = await db.query(query, [id_categoria]);
-    
-    return productos.map(p => ({
-      ...p,
-      imagenes: p.imagenes ? JSON.parse(p.imagenes) : []
-    }));
+  static async hasProductos(id_categoria) {
+    const [rows] = await db.query(
+      'SELECT 1 FROM producto WHERE id_categoria = ? LIMIT 1',
+      [id_categoria]
+    );
+    return rows.length > 0;
   }
 }
 

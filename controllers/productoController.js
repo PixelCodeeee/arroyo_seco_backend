@@ -1,163 +1,147 @@
 // controllers/productoController.js
 const Producto = require('../models/Producto');
+const Categoria = require('../models/Categoria');
+const Oferente = require('../models/Oferente');
 
-// ====================== PUBLIC ======================
-exports.getAllProductos = async (req, res) => {
-  try {
-    const productos = await Producto.findAllPublic();
-    res.json({ success: true, productos });
-  } catch (err) {
-    console.error('getAllProductos error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-exports.getProductosPorOferente = async (req, res) => {
-  try {
-    const { id_oferente } = req.params;
-    const productos = await Producto.findByOferente(id_oferente);
-    res.json({ success: true, productos });
-  } catch (err) {
-    console.error('getProductosPorOferente error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-// En productoController.js, en la sección PUBLIC
 
-exports.getProductosPorOferente = async (req, res) => {
+// 🆕 Add this method
+exports.obtenerProductosPorOferente = async (req, res) => {
   try {
-    const { id_oferente } = req.params;
-    const productos = await Producto.findByOferente(id_oferente);
-    res.json({ success: true, productos });
+    const { oferenteId } = req.params;
+    
+    // Validar que el oferente existe
+    const oferente = await Oferente.findById(oferenteId);
+    if (!oferente) {
+      return res.status(404).json({ error: 'Oferente no encontrado' });
+    }
+    
+    // Obtener productos del oferente (solo activos/con estatus 1)
+    const productos = await Producto.findByOferente(oferenteId);
+    
+    res.json({ 
+      success: true,
+      productos: productos.filter(p => p.estatus === 1) // Solo productos activos
+    });
+    
   } catch (err) {
-    console.error('getProductosPorOferente error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-exports.getProducto = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const producto = await Producto.findByIdPublic(id);
-    if (!producto) return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-
-    res.json({ success: true, producto });
-  } catch (err) {
-    console.error('getProducto error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-exports.getProductosPorTipo = async (req, res) => {
-  try {
-    const { tipo } = req.params; // "gastronomica" | "artesanal" | "todos"
-    const productos = await Producto.findByCategoriaTipo(tipo);
-    res.json({ success: true, productos });
-  } catch (err) {
-    console.error('getProductosPorTipo error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-exports.verificarStock = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { cantidad = 1 } = req.query;
-    const disponible = await Producto.checkStock(id, Number(cantidad));
-    res.json({ success: true, disponible });
-  } catch (err) {
-    console.error('verificarStock error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// ====================== OFERENTE (PRIVATE) ======================
-exports.getMisProductos = async (req, res) => {
-  try {
-    const id_oferente = req.oferente.id_oferente;
-    const productos = await Producto.findByOferente(id_oferente);
-    res.json({ success: true, productos });
-  } catch (err) {
-    console.error('getMisProductos error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('Error obteniendo productos por oferente:', err);
+    res.status(500).json({ error: err.message });
   }
 };
 
 exports.crearProducto = async (req, res) => {
   try {
-    const id_oferente = req.oferente.id_oferente;
-    const {
-      nombre,
-      descripcion,
-      precio,
-      inventario = 0,
-      imagen = [],
-      id_categoria
-    } = req.body;
+    const { id_oferente, nombre, descripcion, precio, inventario, imagenes, estatus = 1, id_categoria } = req.body;
 
-    const id_producto = await Producto.create({
+    // Validación básica
+    if (!id_oferente || !nombre || !precio || !id_categoria) {
+      return res.status(400).json({ error: 'Faltan campos requeridos' });
+    }
+
+    // Validar oferente existe
+    const oferente = await Oferente.findById(id_oferente);
+    if (!oferente) {
+      return res.status(404).json({ error: 'Oferente no encontrado' });
+    }
+
+    // Validar categoría
+    const categoria = await Categoria.findById(id_categoria);
+    if (!categoria) {
+      return res.status(404).json({ error: 'Categoría no encontrada' });
+    }
+
+    // Asegurar formato válido para imágenes
+    let imgs = [];
+    if (Array.isArray(imagenes)) imgs = imagenes;
+    else if (typeof imagenes === "string") {
+      try { imgs = JSON.parse(imagenes); } catch {}
+    }
+
+    const nuevo = await Producto.create({
       id_oferente,
       nombre,
       descripcion,
       precio,
       inventario,
-      imagen,
+      imagenes: imgs,
+      estatus,
       id_categoria
     });
 
-    res.status(201).json({ success: true, message: 'Producto creado', id_producto });
+    res.status(201).json({ message: 'Producto creado', producto: nuevo });
+
   } catch (err) {
-    console.error('crearProducto error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Error al crear producto' });
   }
 };
+
+
+exports.obtenerProductos = async (req, res) => {
+  try {
+    const productos = await Producto.findAll();
+    const categorias = await Categoria.findAll();
+    res.json({ productos, categorias });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+exports.obtenerMisProductos = async (req, res) => {
+  try {
+    const id_oferente = req.user.oferenteId; // auth middleware
+    const productos = await Producto.findByOferente(id_oferente);
+    res.json({ productos });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+exports.obtenerProducto = async (req, res) => {
+  try {
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+    res.json(producto);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 
 exports.actualizarProducto = async (req, res) => {
   try {
-    const { id } = req.params;
-    const id_oferente = req.oferente.id_oferente;
+    let data = { ...req.body };
 
-    const isOwner = await Producto.verifyOwnership(id, id_oferente);
-    if (!isOwner) return res.status(403).json({ success: false, message: 'No autorizado' });
+    // normalizar imágenes si las mandan como string
+    if (data.imagenes !== undefined) {
+      if (typeof data.imagenes === "string") {
+        try { data.imagenes = JSON.parse(data.imagenes); } catch {
+          data.imagenes = [];
+        }
+      }
+      if (!Array.isArray(data.imagenes)) data.imagenes = [];
+    }
 
-    const updated = await Producto.update(id, req.body);
-    if (!updated) return res.status(400).json({ success: false, message: 'Nada que actualizar' });
+    const updated = await Producto.update(req.params.id, data);
+    if (!updated) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    res.json({ success: true, message: 'Producto actualizado' });
+    res.json({ message: 'Actualizado', producto: updated });
+
   } catch (err) {
-    console.error('actualizarProducto error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };
+
 
 exports.eliminarProducto = async (req, res) => {
   try {
-    const { id } = req.params;
-    const id_oferente = req.oferente.id_oferente;
+    const deleted = await Producto.delete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'No encontrado' });
 
-    const isOwner = await Producto.verifyOwnership(id, id_oferente);
-    if (!isOwner) return res.status(403).json({ success: false, message: 'No autorizado' });
-
-    const deleted = await Producto.softDelete(id);
-    res.json({ success: true, message: 'Producto eliminado (soft-delete)', deleted });
+    res.json({ message: 'Producto eliminado' });
   } catch (err) {
-    console.error('eliminarProducto error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-exports.actualizarInventario = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { cantidad } = req.body; // can be + or -
-    const id_oferente = req.oferente.id_oferente;
-
-    const isOwner = await Producto.verifyOwnership(id, id_oferente);
-    if (!isOwner) return res.status(403).json({ success: false, message: 'No autorizado' });
-
-    const updated = await Producto.adjustInventory(id, Number(cantidad));
-    res.json({ success: true, message: 'Inventario actualizado', updated });
-  } catch (err) {
-    console.error('actualizarInventario error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };

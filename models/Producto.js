@@ -2,195 +2,129 @@
 const db = require('../config/db');
 
 class Producto {
-  // -----------------------------------------------------------------
-  // PUBLIC helpers (used by public endpoints)
-  // -----------------------------------------------------------------
-  static async findAllPublic() {
-    const query = `
-      SELECT 
-        p.*,
-        o.nombre_negocio,
-        o.direccion,
-        o.tipo AS tipo_oferente,
-        c.nombre AS categoria_nombre,
-        c.tipo  AS categoria_tipo
-      FROM producto p
-      INNER JOIN oferente o ON p.id_oferente = o.id_oferente
-      LEFT  JOIN categoria c ON p.id_categoria = c.id_categoria
-      WHERE p.esta_disponible = 1
-      ORDER BY p.id_producto DESC
-    `;
 
-    const [rows] = await db.query(query);
-    return rows.map(p => ({
-      ...p,
-      imagen: p.imagen ? JSON.parse(p.imagen) : []
-    }));
-  }
+  // Convertir JSON → Array
+  static parseImagenes(p) {
+  let imgs = [];
 
-  static async findByIdPublic(id) {
-    const query = `
-      SELECT 
-        p.*,
-        o.nombre_negocio,
-        o.direccion,
-        o.tipo AS tipo_oferente,
-        c.nombre AS categoria_nombre,
-        c.tipo  AS categoria_tipo
-      FROM producto p
-      INNER JOIN oferente o ON p.id_oferente = o.id_oferente
-      LEFT  JOIN categoria c ON p.id_categoria = c.id_categoria
-      WHERE p.id_producto = ? AND p.esta_disponible = 1
-    `;
-
-    const [rows] = await db.query(query, [id]);
-    if (!rows.length) return null;
-
-    const row = rows[0];
-    return { ...row, imagen: row.imagen ? JSON.parse(row.imagen) : [] };
-  }
-
-  static async findByCategoriaTipo(tipo) {
-    let sql = `
-      SELECT 
-        p.*,
-        o.nombre_negocio,
-        o.direccion,
-        o.tipo AS tipo_oferente,
-        c.nombre AS categoria_nombre,
-        c.tipo  AS categoria_tipo
-      FROM producto p
-      INNER JOIN oferente o ON p.id_oferente = o.id_oferente
-      LEFT  JOIN categoria c ON p.id_categoria = c.id_categoria
-      WHERE p.esta_disponible = 1
-    `;
-    const params = [];
-
-    if (tipo !== 'todos') {
-      sql += ` AND c.tipo = ?`;
-      params.push(tipo);
+  if (Array.isArray(p.imagenes)) {
+    imgs = p.imagenes;
+  } else if (typeof p.imagenes === "string") {
+    try {
+      const parsed = JSON.parse(p.imagenes);
+      if (Array.isArray(parsed)) imgs = parsed;
+    } catch {
+      imgs = [];
     }
-
-    sql += ` ORDER BY p.id_producto DESC`;
-
-    const [rows] = await db.query(sql, params);
-    return rows.map(p => ({
-      ...p,
-      imagen: p.imagen ? JSON.parse(p.imagen) : []
-    }));
   }
 
-  // -----------------------------------------------------------------
-  // OFERENTE helpers (private)
-  // -----------------------------------------------------------------
-  static async findByOferente(id_oferente) {
-    const query = `
-      SELECT p.*, c.nombre AS categoria_nombre, c.tipo AS categoria_tipo
-      FROM producto p
-      LEFT JOIN categoria c ON p.id_categoria = c.id_categoria
-      WHERE p.id_oferente = ?
-      ORDER BY p.id_producto DESC
-    `;
-    const [rows] = await db.query(query, [id_oferente]);
-    return rows.map(p => ({
-      ...p,
-      imagen: p.imagen ? JSON.parse(p.imagen) : []
-    }));
-  }
+  return { ...p, imagenes: imgs };
+}
 
-  static async verifyOwnership(id_producto, id_oferente) {
-    const [rows] = await db.query(
-      `SELECT 1 FROM producto WHERE id_producto = ? AND id_oferente = ?`,
-      [id_producto, id_oferente]
-    );
-    return rows.length > 0;
-  }
 
-  static async create({
-    id_oferente,
-    nombre,
-    descripcion,
-    precio,
-    inventario = 0,
-    imagen = [],
-    id_categoria,
-    esta_disponible = 1
-  }) {
-    const query = `
-      INSERT INTO producto
-        (id_oferente, nombre, descripcion, precio, inventario, imagen, id_categoria, esta_disponible)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const [result] = await db.query(query, [
+  static async create(data) {
+    const {
       id_oferente,
       nombre,
       descripcion,
       precio,
-      inventario,
-      JSON.stringify(imagen),
-      id_categoria,
-      esta_disponible
-    ]);
+      inventario = 0,
+      imagenes = [],
+      estatus = 1,
+      id_categoria
+    } = data;
 
-    return result.insertId;
+    const imagenesJSON = imagenes && imagenes.length > 0
+      ? JSON.stringify(imagenes)
+      : null;
+
+    const [result] = await db.query(
+      `INSERT INTO producto 
+      (id_oferente, nombre, descripcion, precio, inventario, imagenes, estatus, id_categoria)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id_oferente,
+        nombre,
+        descripcion || null,
+        precio,
+        inventario,
+        imagenesJSON,
+        estatus,
+        id_categoria
+      ]
+    );
+
+    return this.findById(result.insertId);
   }
 
-  static async update(id_producto, updates) {
-    const allowed = [
-      'nombre',
-      'descripcion',
-      'precio',
-      'inventario',
-      'esta_disponible',
-      'id_categoria'
-    ];
-    const sets = [];
+  static async findAll() {
+    const [rows] = await db.query(`
+      SELECT p.*, c.nombre as nombre_categoria, c.tipo as tipo_categoria
+      FROM producto p
+      LEFT JOIN categoria c ON p.id_categoria = c.id_categoria
+      ORDER BY p.id_producto DESC
+    `);
+    return rows.map(this.parseImagenes);
+  }
+
+  static async findById(id) {
+    const [rows] = await db.query(`
+      SELECT p.*, c.nombre as nombre_categoria, c.tipo as tipo_categoria
+      FROM producto p
+      LEFT JOIN categoria c ON p.id_categoria = c.id_categoria
+      WHERE p.id_producto = ?
+    `, [id]);
+
+    return rows.length ? this.parseImagenes(rows[0]) : null;
+  }
+
+  static async findByOferente(id_oferente) {
+    const [rows] = await db.query(`
+      SELECT p.*, c.nombre as nombre_categoria, c.tipo as tipo_categoria
+      FROM producto p
+      LEFT JOIN categoria c ON p.id_categoria = c.id_categoria
+      WHERE p.id_oferente = ?
+      ORDER BY p.id_producto DESC
+    `, [id_oferente]);
+
+    return rows.map(this.parseImagenes);
+  }
+
+  static async update(id, data) {
+    const fields = [];
     const values = [];
 
-    allowed.forEach(col => {
-      if (updates[col] !== undefined) {
-        sets.push(`${col} = ?`);
-        values.push(updates[col]);
-      }
-    });
+    if (data.nombre !== undefined) { fields.push('nombre = ?'); values.push(data.nombre); }
+    if (data.descripcion !== undefined) { fields.push('descripcion = ?'); values.push(data.descripcion); }
+    if (data.precio !== undefined) { fields.push('precio = ?'); values.push(data.precio); }
+    if (data.inventario !== undefined) { fields.push('inventario = ?'); values.push(data.inventario); }
+    if (data.estatus !== undefined) { fields.push('estatus = ?'); values.push(data.estatus ? 1 : 0); }
+    if (data.id_categoria !== undefined) { fields.push('id_categoria = ?'); values.push(data.id_categoria); }
 
-    if (updates.imagen !== undefined) {
-      sets.push(`imagen = ?`);
-      values.push(JSON.stringify(updates.imagen));
+    if (data.imagenes !== undefined) {
+      const json = data.imagenes.length > 0 ? JSON.stringify(data.imagenes) : null;
+      fields.push('imagenes = ?');
+      values.push(json);
     }
 
-    if (!sets.length) return false;
+    if (fields.length === 0) return this.findById(id);
 
-    values.push(id_producto);
-    const query = `UPDATE producto SET ${sets.join(', ')} WHERE id_producto = ?`;
-    const [res] = await db.query(query, values);
-    return res.affectedRows > 0;
+    values.push(id);
+
+    await db.query(
+      `UPDATE producto SET ${fields.join(', ')} WHERE id_producto = ?`,
+      values
+    );
+
+    return this.findById(id);
   }
 
-  static async softDelete(id_producto) {
-    const [res] = await db.query(
-      `UPDATE producto SET esta_disponible = 0 WHERE id_producto = ?`,
-      [id_producto]
+  static async delete(id) {
+    const [result] = await db.query(
+      `DELETE FROM producto WHERE id_producto = ?`,
+      [id]
     );
-    return res.affectedRows > 0;
-  }
-
-  static async adjustInventory(id_producto, cantidad) {
-    const [res] = await db.query(
-      `UPDATE producto SET inventario = inventario + ? WHERE id_producto = ?`,
-      [cantidad, id_producto]
-    );
-    return res.affectedRows > 0;
-  }
-
-  static async checkStock(id_producto, qty = 1) {
-    const [rows] = await db.query(
-      `SELECT inventario FROM producto WHERE id_producto = ? AND esta_disponible = 1`,
-      [id_producto]
-    );
-    if (!rows.length) return false;
-    return rows[0].inventario >= qty;
+    return result.affectedRows > 0;
   }
 }
 

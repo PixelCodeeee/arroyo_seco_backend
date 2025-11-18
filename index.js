@@ -8,10 +8,9 @@ const app = express();
 const usuariosRoutes = require('./routes/usuarios');
 const oferentesRoutes = require('./routes/oferentes');
 const serviciosRoutes = require('./routes/servicios');
-const productosRoutes = require('./routes/productos'); // ✅ Solo la ruta
-const categoriasRoutes = require('./routes/categorias');
+const productosRoutes = require('./routes/productos');
 const reservasRoutes = require('./routes/reservas');
-
+const paypalRoutes = require('./routes/paypal');
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -22,21 +21,21 @@ app.get('/', (req, res) => {
         message: 'ARROYO SECO API running',
         version: '1.0.0',
         endpoints: {
+            paypal: '/api/paypal',
             usuarios: '/api/usuarios',
             oferentes: '/api/oferentes',
             servicios: '/api/servicios',
             productos: '/api/productos',
-            categorias: '/api/categorias',
             reservas: '/api/reservas'
         }
     });
 });
 
+app.use('/api/paypal', paypalRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/oferentes', oferentesRoutes);
 app.use('/api/servicios', serviciosRoutes);
 app.use('/api/productos', productosRoutes);
-app.use('/api/categorias', categoriasRoutes);
 app.use('/api/reservas', reservasRoutes);
 
 // Error handling middleware

@@ -1,61 +1,51 @@
 const ServicioRestaurante = require('../models/ServicioRestaurante');
 const Oferente = require('../models/Oferente');
 
-// crear nuevo servicio
+// Crear
 exports.crearServicio = async (req, res) => {
     try {
-        const { 
-            id_oferente, 
-            nombre, 
-            descripcion, 
-            rango_precio, 
-            capacidad, 
-            imagenes, 
-            esta_disponible,
-            id_categoria 
+        const {
+            id_oferente,
+            nombre,
+            descripcion,
+            rango_precio,
+            capacidad,
+            imagenes,
+            estatus = 1
         } = req.body;
 
-        // validar campos requeridos
         if (!id_oferente || !nombre) {
-            return res.status(400).json({ 
-                error: 'Los campos id_oferente y nombre son requeridos' 
-            });
+            return res.status(400).json({ error: "id_oferente y nombre son requeridos" });
         }
 
-        // si el oferente existe
         const oferente = await Oferente.findById(id_oferente);
-        if (!oferente) {
-            return res.status(404).json({ 
-                error: 'El oferente especificado no existe' 
-            });
+        if (!oferente) return res.status(404).json({ error: "El oferente no existe" });
+
+        // Solo 1 servicio por oferente
+        const existente = await ServicioRestaurante.findByOfferenteId(id_oferente);
+        if (existente.length > 0) {
+            return res.status(409).json({ error: "Este oferente ya tiene un servicio creado" });
         }
 
-        // validar capacidad
-        if (capacidad && capacidad < 0) {
-            return res.status(400).json({ 
-                error: 'La capacidad no puede ser negativa' 
-            });
+        if (capacidad !== undefined && capacidad < 0) {
+            return res.status(400).json({ error: "La capacidad no puede ser negativa" });
         }
 
-        // crear servicio
-        const servicio = await ServicioRestaurante.create({ 
-            id_oferente, 
-            nombre, 
-            descripcion, 
-            rango_precio, 
-            capacidad, 
-            imagenes, 
-            esta_disponible,
-            id_categoria 
-        });
 
-        res.status(201).json({
-            message: 'Servicio creado exitosamente',
-            servicio
-        });
+const servicio = await ServicioRestaurante.create({
+    id_oferente,
+    nombre,
+    descripcion,
+    rango_precio,
+    capacidad,
+    imagenes,  
+    estatus
+});
+
+        res.status(201).json({ message: "Servicio creado exitosamente", servicio });
     } catch (error) {
-        console.error('Error creating servicio:', error);
-        res.status(500).json({ error: error.message || 'Error al crear servicio' });
+        console.error("Error creating servicio:", error);
+        res.status(500).json({ error: "Error al crear servicio" });
     }
 };
 
@@ -107,59 +97,43 @@ exports.obtenerServiciosPorOferente = async (req, res) => {
     }
 };
 
-// actualizar servicio
+// Actualizar (quitamos id_categoria)
 exports.actualizarServicio = async (req, res) => {
     try {
-        const { 
-            nombre, 
-            descripcion, 
-            rango_precio, 
-            capacidad, 
-            imagenes, 
-            esta_disponible,
-            id_categoria 
+        const {
+            nombre,
+            descripcion,
+            rango_precio,
+            capacidad,
+            imagenes,
+            estatus
         } = req.body;
-        const servicioId = req.params.id;
 
-        // checar si servicio existe
-        const existingServicio = await ServicioRestaurante.findById(servicioId);
-        if (!existingServicio) {
-            return res.status(404).json({ error: 'Servicio no encontrado' });
-        }
+        const id = req.params.id;
 
-        // validar capacidad
+        const servicio = await ServicioRestaurante.findById(id);
+        if (!servicio) return res.status(404).json({ error: "Servicio no encontrado" });
+
         if (capacidad !== undefined && capacidad < 0) {
-            return res.status(400).json({ 
-                error: 'La capacidad no puede ser negativa' 
-            });
+            return res.status(400).json({ error: "La capacidad no puede ser negativa" });
         }
 
-        // actualizar servicio
-        const servicio = await ServicioRestaurante.update(servicioId, { 
-            nombre, 
-            descripcion, 
-            rango_precio, 
-            capacidad, 
-            imagenes, 
-            esta_disponible,
-            id_categoria 
+        const actualizado = await ServicioRestaurante.update(id, {
+            nombre,
+            descripcion,
+            rango_precio,
+            capacidad,
+            imagenes,
+            estatus
         });
 
-        if (!servicio) {
-            return res.status(400).json({ 
-                error: 'No hay campos para actualizar' 
-            });
-        }
-
-        res.json({
-            message: 'Servicio actualizado exitosamente',
-            servicio
-        });
+        res.json({ message: "Servicio actualizado exitosamente", servicio: actualizado });
     } catch (error) {
-        console.error('Error updating servicio:', error);
-        res.status(500).json({ error: error.message || 'Error al actualizar servicio' });
+        console.error("Error updating servicio:", error);
+        res.status(500).json({ error: "Error al actualizar servicio" });
     }
 };
+
 
 // elinminar servicio
 exports.eliminarServicio = async (req, res) => {

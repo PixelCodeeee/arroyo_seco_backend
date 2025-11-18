@@ -1,23 +1,32 @@
 // routes/productos.js
 const express = require('express');
 const router = express.Router();
-const productoController = require('../controllers/productoController'); // ✅ Aquí SÍ
-const { verifyOferente } = require('../middleware/auth');
+const productoController = require('../controllers/productoController');
+const categoriaController = require('../controllers/categoriaController');
 
-console.log('📦 Rutas de productos cargadas');
+// =======================
+// PRODUCTOS
+// =======================
+router.post('/', productoController.crearProducto);
+router.get('/', productoController.obtenerProductos);
+router.get('/mis-productos', productoController.obtenerMisProductos);
 
-// PÚBLICO - Esta ruta PRIMERO
-router.get('/oferente/:id_oferente', productoController.getProductosPorOferente);
-router.get('/', productoController.getAllProductos);
-router.get('/categoria/:tipo', productoController.getProductosPorTipo);
-router.get('/stock/:id', productoController.verificarStock);
-router.get('/detalle/:id', productoController.getProducto);
+// 🆕 ADD THIS - Get products by oferente
+router.get('/oferente/:oferenteId', productoController.obtenerProductosPorOferente);
 
-// PRIVADO
-router.get('/mis-productos', verifyOferente, productoController.getMisProductos);
-router.post('/crear', verifyOferente, productoController.crearProducto);
-router.put('/actualizar/:id', verifyOferente, productoController.actualizarProducto);
-router.delete('/eliminar/:id', verifyOferente, productoController.eliminarProducto);
-router.patch('/inventario/:id', verifyOferente, productoController.actualizarInventario);
+// =======================
+// CATEGORÍAS (MUST GO FIRST)
+// =======================
+router.post('/categorias', categoriaController.crearCategoria);
+router.get('/categorias', categoriaController.obtenerCategorias);
+router.put('/categorias/:id', categoriaController.actualizarCategoria);
+router.delete('/categorias/:id', categoriaController.eliminarCategoria);
+
+// =======================
+// PRODUCTOS BY ID (PLACE LAST)
+// =======================
+router.get('/:id', productoController.obtenerProducto);
+router.put('/:id', productoController.actualizarProducto);
+router.delete('/:id', productoController.eliminarProducto);
 
 module.exports = router;

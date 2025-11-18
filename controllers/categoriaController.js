@@ -1,292 +1,81 @@
 // controllers/categoriaController.js
 const Categoria = require('../models/Categoria');
-const db = require('../config/db');
 
-// Obtener todas las categorías
-exports.getCategorias = async (req, res) => {
-  try {
-    const categorias = await Categoria.findAll();
-    
-    res.json({
-      success: true,
-      data: categorias
-    });
-  } catch (error) {
-    console.error('Error al obtener categorías:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener categorías',
-      error: error.message
-    });
-  }
-};
-
-// Obtener categorías por tipo
-exports.getCategoriasPorTipo = async (req, res) => {
-  try {
-    const { tipo } = req.params;
-    
-    // Validar tipo
-    if (!['gastronomica', 'artesanal'].includes(tipo)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tipo de categoría inválido. Debe ser "gastronomica" o "artesanal"'
-      });
-    }
-    
-    const categorias = await Categoria.findByTipo(tipo);
-    
-    res.json({
-      success: true,
-      data: categorias
-    });
-  } catch (error) {
-    console.error('Error al obtener categorías por tipo:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener categorías',
-      error: error.message
-    });
-  }
-};
-
-// Obtener categoría específica
-exports.getCategoria = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const categoria = await Categoria.findById(id);
-    
-    if (!categoria) {
-      return res.status(404).json({
-        success: false,
-        message: 'Categoría no encontrada'
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: categoria
-    });
-  } catch (error) {
-    console.error('Error al obtener categoría:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener categoría',
-      error: error.message
-    });
-  }
-};
-
-// Crear nueva categoría (requiere autenticación de admin)
 exports.crearCategoria = async (req, res) => {
-  const connection = await db.getConnection();
-  
   try {
     const { nombre, tipo } = req.body;
-    
-    // Validaciones
+
     if (!nombre || !tipo) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nombre y tipo son requeridos'
-      });
+      return res.status(400).json({ error: 'Nombre y tipo son requeridos' });
     }
-    
-    if (!['gastronomica', 'artesanal'].includes(tipo)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tipo de categoría inválido'
-      });
+
+    const categorias = await Categoria.findAll();
+    const existe = categorias.find(
+      c => c.nombre.toLowerCase() === nombre.trim().toLowerCase() && c.tipo === tipo
+    );
+
+    if (existe) {
+      return res.status(409).json({ error: 'Esta categoría ya existe en este tipo' });
     }
-    
-    await connection.beginTransaction();
-    
-    const id_categoria = await Categoria.create({ nombre, tipo });
-    
-    await connection.commit();
-    
-    // Obtener la categoría creada
-    const nuevaCategoria = await Categoria.findById(id_categoria);
-    
-    res.status(201).json({
-      success: true,
-      message: 'Categoría creada exitosamente',
-      data: nuevaCategoria
-    });
-  } catch (error) {
-    await connection.rollback();
-    console.error('Error al crear categoría:', error);
-    
-    if (error.message.includes('Ya existe')) {
-      return res.status(409).json({
-        success: false,
-        message: error.message
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error al crear categoría',
-      error: error.message
-    });
-  } finally {
-    connection.release();
+
+    const nueva = await Categoria.create({ nombre: nombre.trim(), tipo });
+    res.status(201).json({ message: 'Categoría creada', categoria: nueva });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };
 
-// Actualizar categoría
+exports.obtenerCategorias = async (req, res) => {
+  try {
+    const { tipo } = req.query;
+
+    const categorias = tipo
+      ? await Categoria.findByTipo(tipo)
+      : await Categoria.findAll();
+
+    res.json({ categorias });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.actualizarCategoria = async (req, res) => {
-  const connection = await db.getConnection();
-  
   try {
-    const { id } = req.params;
     const { nombre, tipo } = req.body;
-    
-    // Validar tipo si se proporciona
-    if (tipo && !['gastronomica', 'artesanal'].includes(tipo)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tipo de categoría inválido'
-      });
-    }
-    
-    await connection.beginTransaction();
-    
-    const actualizado = await Categoria.update(id, { nombre, tipo });
-    
-    if (!actualizado) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: 'Categoría no encontrada o sin cambios'
-      });
-    }
-    
-    await connection.commit();
-    
-    // Obtener la categoría actualizada
-    const categoriaActualizada = await Categoria.findById(id);
-    
-    res.json({
-      success: true,
-      message: 'Categoría actualizada exitosamente',
-      data: categoriaActualizada
-    });
-  } catch (error) {
-    await connection.rollback();
-    console.error('Error al actualizar categoría:', error);
-    
-    if (error.message.includes('Ya existe')) {
-      return res.status(409).json({
-        success: false,
-        message: error.message
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error al actualizar categoría',
-      error: error.message
-    });
-  } finally {
-    connection.release();
+
+    const updated = await Categoria.update(req.params.id, { nombre, tipo });
+
+    if (!updated) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+    res.json({ message: 'Categoría actualizada', categoria: updated });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
 
-// Eliminar categoría
 exports.eliminarCategoria = async (req, res) => {
-  const connection = await db.getConnection();
-  
   try {
-    const { id } = req.params;
-    
-    await connection.beginTransaction();
-    
-    const eliminado = await Categoria.delete(id);
-    
-    if (!eliminado) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: 'Categoría no encontrada'
-      });
-    }
-    
-    await connection.commit();
-    
-    res.json({
-      success: true,
-      message: 'Categoría eliminada exitosamente'
-    });
-  } catch (error) {
-    await connection.rollback();
-    console.error('Error al eliminar categoría:', error);
-    
-    if (error.message.includes('productos asociados')) {
-      return res.status(409).json({
-        success: false,
-        message: error.message
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error al eliminar categoría',
-      error: error.message
-    });
-  } finally {
-    connection.release();
-  }
-};
+    const id = req.params.id;
 
-// Obtener estadísticas de categorías
-exports.getEstadisticas = async (req, res) => {
-  try {
-    const estadisticas = await Categoria.getEstadisticas();
-    
-    res.json({
-      success: true,
-      data: estadisticas
-    });
-  } catch (error) {
-    console.error('Error al obtener estadísticas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener estadísticas',
-      error: error.message
-    });
-  }
-};
+    // Verificar si tiene productos asociados
+    const tieneProductos = await Categoria.hasProductos(id);
 
-// Obtener productos de una categoría
-exports.getProductosDeCategoria = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Verificar que la categoría existe
-    const categoria = await Categoria.findById(id);
-    if (!categoria) {
-      return res.status(404).json({
-        success: false,
-        message: 'Categoría no encontrada'
+    if (tieneProductos) {
+      return res.status(400).json({
+        error: 'No se puede eliminar: hay productos con esta categoría'
       });
     }
-    
-    const productos = await Categoria.getProductosPorCategoria(id);
-    
-    res.json({
-      success: true,
-      data: {
-        categoria,
-        productos
-      }
-    });
-  } catch (error) {
-    console.error('Error al obtener productos de categoría:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener productos',
-      error: error.message
-    });
+
+    const deleted = await Categoria.delete(id);
+
+    if (!deleted) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+    res.json({ message: 'Categoría eliminada' });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
