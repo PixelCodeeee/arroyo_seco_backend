@@ -1,30 +1,27 @@
 const db = require('../config/db');
 
 class Oferente {
-    // Crear oferente
+    // ===== CREATE =====
     static async create(oferenteData) {
         const { id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad } = oferenteData;
-        
-        // validar tipo
+
         const tiposValidos = ['restaurante', 'artesanal'];
         if (!tiposValidos.includes(tipo)) {
             throw new Error('Tipo debe ser "restaurante" o "artesanal"');
         }
 
-        // convertir horsrio
-        const horarioJSON = typeof horario_disponibilidad === 'object' 
-            ? JSON.stringify(horario_disponibilidad) 
-            : horario_disponibilidad;
-        
+        // Guardamos como texto plano
+        const horarioTexto = horario_disponibilidad || null;
+
         const [result] = await db.query(
-            'INSERT INTO OFERENTE (id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad) VALUES (?, ?, ?, ?, ?)',
-            [id_usuario, nombre_negocio, direccion, tipo, horarioJSON]
+            'INSERT INTO oferente (id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad) VALUES (?, ?, ?, ?, ?)',
+            [id_usuario, nombre_negocio, direccion || null, tipo, horarioTexto]
         );
-        
+
         return await this.findById(result.insertId);
     }
 
-    // encontrar todos los oferentes 
+    // ===== FINDALL =====
     static async findAll() {
         const [oferentes] = await db.query(`
             SELECT 
@@ -36,23 +33,21 @@ class Oferente {
                 o.horario_disponibilidad,
                 u.nombre as nombre_usuario,
                 u.correo as correo_usuario
-            FROM OFERENTE o
-            INNER JOIN USUARIO u ON o.id_usuario = u.id_usuario
+            FROM oferente o
+            INNER JOIN usuario u ON o.id_usuario = u.id_usuario
             ORDER BY o.id_oferente DESC
         `);
-        
-        //  JSON horario_disponibilidad
+
+        // NO hacemos JSON.parse → es texto plano
         return oferentes.map(oferente => ({
             ...oferente,
-            horario_disponibilidad: oferente.horario_disponibilidad 
-                ? JSON.parse(oferente.horario_disponibilidad) 
-                : null
+            horario_disponibilidad: oferente.horario_disponibilidad || null
         }));
     }
 
-    // encontrar oferente por ID
+    // ===== FINDBYID =====
     static async findById(id) {
-        const [oferentes] = await db.query(`
+        const [rows] = await db.query(`
             SELECT 
                 o.id_oferente,
                 o.id_usuario,
@@ -62,24 +57,21 @@ class Oferente {
                 o.horario_disponibilidad,
                 u.nombre as nombre_usuario,
                 u.correo as correo_usuario
-            FROM OFERENTE o
-            INNER JOIN USUARIO u ON o.id_usuario = u.id_usuario
+            FROM oferente o
+            INNER JOIN usuario u ON o.id_usuario = u.id_usuario
             WHERE o.id_oferente = ?
         `, [id]);
-        
-        if (oferentes.length === 0) return null;
-        
-        const oferente = oferentes[0];
-        oferente.horario_disponibilidad = oferente.horario_disponibilidad 
-            ? JSON.parse(oferente.horario_disponibilidad) 
-            : null;
-        
+
+        if (rows.length === 0) return null;
+
+        const oferente = rows[0];
+        oferente.horario_disponibilidad = oferente.horario_disponibilidad || null;
         return oferente;
     }
 
-    // encontrar oferente por ID de usuario
+    // ===== FINDBYUSERID =====
     static async findByUserId(userId) {
-        const [oferentes] = await db.query(`
+        const [rows] = await db.query(`
             SELECT 
                 o.id_oferente,
                 o.id_usuario,
@@ -87,28 +79,25 @@ class Oferente {
                 o.direccion,
                 o.tipo,
                 o.horario_disponibilidad
-            FROM OFERENTE o
+            FROM oferente o
             WHERE o.id_usuario = ?
         `, [userId]);
-        
-        if (oferentes.length === 0) return null;
-        
-        const oferente = oferentes[0];
-        oferente.horario_disponibilidad = oferente.horario_disponibilidad 
-            ? JSON.parse(oferente.horario_disponibilidad) 
-            : null;
-        
+
+        if (rows.length === 0) return null;
+
+        const oferente = rows[0];
+        oferente.horario_disponibilidad = oferente.horario_disponibilidad || null;
         return oferente;
     }
 
-    // actualizar oferente
+    // ===== UPDATE =====
     static async update(id, oferenteData) {
         const { nombre_negocio, direccion, tipo, horario_disponibilidad } = oferenteData;
-        
+
         let updateFields = [];
         let values = [];
 
-        if (nombre_negocio) {
+        if (nombre_negocio !== undefined) {
             updateFields.push('nombre_negocio = ?');
             values.push(nombre_negocio);
         }
@@ -116,7 +105,7 @@ class Oferente {
             updateFields.push('direccion = ?');
             values.push(direccion);
         }
-        if (tipo) {
+        if (tipo !== undefined) {
             const tiposValidos = ['restaurante', 'artesanal'];
             if (!tiposValidos.includes(tipo)) {
                 throw new Error('Tipo debe ser "restaurante" o "artesanal"');
@@ -125,45 +114,37 @@ class Oferente {
             values.push(tipo);
         }
         if (horario_disponibilidad !== undefined) {
-            const horarioJSON = typeof horario_disponibilidad === 'object' 
-                ? JSON.stringify(horario_disponibilidad) 
-                : horario_disponibilidad;
             updateFields.push('horario_disponibilidad = ?');
-            values.push(horarioJSON);
+            values.push(horario_disponibilidad || null); // ← texto plano
         }
 
-        if (updateFields.length === 0) {
-            return null;
-        }
+        if (updateFields.length === 0) return null;
 
         values.push(id);
-        const query = `UPDATE OFERENTE SET ${updateFields.join(', ')} WHERE id_oferente = ?`;
-        
+        const query = `UPDATE oferente SET ${updateFields.join(', ')} WHERE id_oferente = ?`;
+
         await db.query(query, values);
         return await this.findById(id);
     }
 
-    // elimar oferente
+    // ===== DELETE =====
     static async delete(id) {
-        const [result] = await db.query(
-            'DELETE FROM OFERENTE WHERE id_oferente = ?',
-            [id]
-        );
+        const [result] = await db.query('DELETE FROM oferente WHERE id_oferente = ?', [id]);
         return result.affectedRows > 0;
     }
 
-    //verificar existencia por ID de usuario
+    // ===== EXISTS BY USER ID =====
     static async existsByUserId(userId, excludeId = null) {
-        let query = 'SELECT id_oferente FROM OFERENTE WHERE id_usuario = ?';
+        let query = 'SELECT id_oferente FROM oferente WHERE id_usuario = ?';
         let params = [userId];
-        
+
         if (excludeId) {
             query += ' AND id_oferente != ?';
             params.push(excludeId);
         }
-        
-        const [oferentes] = await db.query(query, params);
-        return oferentes.length > 0;
+
+        const [rows] = await db.query(query, params);
+        return rows.length > 0;
     }
 }
 
