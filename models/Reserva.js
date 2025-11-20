@@ -1,327 +1,258 @@
-// models/Reserva.js
 const db = require('../config/db');
 
 class Reserva {
-    // Crear nueva reserva
-    static async create(reservaData) {
-        const { 
-            id_usuario, 
-            id_servicio, 
-            fecha, 
-            hora, 
-            numero_personas, 
+    // Crear reserva con validaciones de unicidad
+    static async create(data) {
+        const {
+            id_usuario,
+            id_servicio,
+            fecha,
+            hora,
+            numero_personas,
             estado = 'pendiente',
-            notas 
-        } = reservaData;
-        
+            notas = null
+        } = data;
+
+        // Validar que no exista reserva para el mismo usuario en la misma fecha
+        const [existeUsuarioFecha] = await db.query(
+            `SELECT id_reserva FROM reserva 
+             WHERE id_usuario = ? AND fecha = ?`,
+            [id_usuario, fecha]
+        );
+
+        if (existeUsuarioFecha.length > 0) {
+            throw new Error('Ya existe una reserva para este usuario en esta fecha');
+        }
+
+        // Validar que no existan dos reservas para el mismo servicio en la misma fecha y hora
+        const [existeServicioFechaHora] = await db.query(
+            `SELECT id_reserva FROM reserva 
+             WHERE id_servicio = ? AND fecha = ? AND hora = ?`,
+            [id_servicio, fecha, hora]
+        );
+
+        if (existeServicioFechaHora.length > 0) {
+            throw new Error('Ya existe una reserva para este servicio en esta fecha y hora');
+        }
+
         const [result] = await db.query(
-            `INSERT INTO RESERVA 
-            (id_usuario, id_servicio, fecha, hora, numero_personas, estado, notas) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO reserva 
+             (id_usuario, id_servicio, fecha, hora, numero_personas, estado, notas)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [id_usuario, id_servicio, fecha, hora, numero_personas, estado, notas]
         );
-        
+
         return await this.findById(result.insertId);
     }
 
-    // Encontrar todas las reservas
+    // Obtener todas las reservas con información relacionada
     static async findAll() {
-        const [reservas] = await db.query(`
+        const [rows] = await db.query(`
             SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+                r.*,
                 u.nombre as nombre_usuario,
-                u.email as email_usuario,
-                u.telefono as telefono_usuario,
+                u.correo as email_usuario,
                 s.nombre as nombre_servicio,
-                s.rango_precio,
-                s.capacidad,
-                o.nombre_negocio,
-                o.direccion
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
+                o.nombre_negocio as nombre_oferente
+            FROM reserva r
+            LEFT JOIN usuario u ON r.id_usuario = u.id_usuario
+            LEFT JOIN servicio_restaurante s ON r.id_servicio = s.id_servicio
+            LEFT JOIN oferente o ON s.id_oferente = o.id_oferente
             ORDER BY r.fecha DESC, r.hora DESC
         `);
-        
-        return reservas;
+        return rows;
     }
 
-    // Encontrar reserva por ID
+    // Obtener reserva por ID
     static async findById(id) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+        const [rows] = await db.query(
+            `SELECT 
+                r.*,
                 u.nombre as nombre_usuario,
-                u.email as email_usuario,
-                u.telefono as telefono_usuario,
+                u.correo as email_usuario,
                 s.nombre as nombre_servicio,
-                s.descripcion as descripcion_servicio,
-                s.rango_precio,
-                s.capacidad,
-                o.nombre_negocio,
-                o.direccion,
-                o.telefono as telefono_negocio
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
-            WHERE r.id_reserva = ?
-        `, [id]);
-        
-        if (reservas.length === 0) return null;
-        
-        return reservas[0];
+                o.nombre_negocio as nombre_oferente,
+                o.id_oferente
+            FROM reserva r
+            LEFT JOIN usuario u ON r.id_usuario = u.id_usuario
+            LEFT JOIN servicio_restaurante s ON r.id_servicio = s.id_servicio
+            LEFT JOIN oferente o ON s.id_oferente = o.id_oferente
+            WHERE r.id_reserva = ?`,
+            [id]
+        );
+        return rows.length ? rows[0] : null;
     }
 
-    // Encontrar reservas por usuario
-    static async findByUserId(userId) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+    // Obtener reservas por usuario
+    static async findByUsuarioId(usuarioId) {
+        const [rows] = await db.query(
+            `SELECT 
+                r.*,
                 s.nombre as nombre_servicio,
                 s.rango_precio,
-                o.nombre_negocio,
-                o.direccion
-            FROM RESERVA r
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
+                o.nombre_negocio as nombre_oferente
+            FROM reserva r
+            LEFT JOIN servicio_restaurante s ON r.id_servicio = s.id_servicio
+            LEFT JOIN oferente o ON s.id_oferente = o.id_oferente
             WHERE r.id_usuario = ?
-            ORDER BY r.fecha DESC, r.hora DESC
-        `, [userId]);
-        
-        return reservas;
+            ORDER BY r.fecha DESC, r.hora DESC`,
+            [usuarioId]
+        );
+        return rows;
     }
 
-    // Encontrar reservas por servicio
-    static async findByServiceId(serviceId) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+    // Obtener reservas por servicio
+    static async findByServicioId(servicioId) {
+        const [rows] = await db.query(
+            `SELECT 
+                r.*,
                 u.nombre as nombre_usuario,
-                u.email as email_usuario,
+                u.correo as email_usuario,
                 u.telefono as telefono_usuario
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
+            FROM reserva r
+            LEFT JOIN usuario u ON r.id_usuario = u.id_usuario
             WHERE r.id_servicio = ?
-            ORDER BY r.fecha DESC, r.hora DESC
-        `, [serviceId]);
-        
-        return reservas;
+            ORDER BY r.fecha DESC, r.hora DESC`,
+            [servicioId]
+        );
+        return rows;
     }
 
-    // Encontrar reservas por fecha
-    static async findByDate(fecha) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+    // Obtener reservas por oferente (útil para que el oferente vea sus reservas)
+    static async findByOferenteId(oferenteId) {
+        const [rows] = await db.query(
+            `SELECT 
+                r.*,
                 u.nombre as nombre_usuario,
-                s.nombre as nombre_servicio,
-                o.nombre_negocio
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
-            WHERE r.fecha = ?
-            ORDER BY r.hora ASC
-        `, [fecha]);
-        
-        return reservas;
+                u.correo as email_usuario,
+                u.telefono as telefono_usuario,
+                s.nombre as nombre_servicio
+            FROM reserva r
+            LEFT JOIN usuario u ON r.id_usuario = u.id_usuario
+            LEFT JOIN servicio_restaurante s ON r.id_servicio = s.id_servicio
+            WHERE s.id_oferente = ?
+            ORDER BY r.fecha DESC, r.hora DESC`,
+            [oferenteId]
+        );
+        return rows;
     }
 
-    // Encontrar reservas por estado
-    static async findByStatus(estado) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.id_reserva,
-                r.id_usuario,
-                r.id_servicio,
-                r.fecha,
-                r.hora,
-                r.numero_personas,
-                r.estado,
-                r.notas,
+    // Obtener reservas por estado
+    static async findByEstado(estado) {
+        const [rows] = await db.query(
+            `SELECT 
+                r.*,
                 u.nombre as nombre_usuario,
-                s.nombre as nombre_servicio,
-                o.nombre_negocio
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
+                s.nombre as nombre_servicio
+            FROM reserva r
+            LEFT JOIN usuario u ON r.id_usuario = u.id_usuario
+            LEFT JOIN servicio_restaurante s ON r.id_servicio = s.id_servicio
             WHERE r.estado = ?
-            ORDER BY r.fecha DESC, r.hora DESC
-        `, [estado]);
-        
-        return reservas;
+            ORDER BY r.fecha DESC, r.hora DESC`,
+            [estado]
+        );
+        return rows;
     }
 
-    // Actualizar reserva
-    static async update(id, reservaData) {
-        const { 
-            fecha, 
-            hora, 
-            numero_personas, 
-            estado,
-            notas 
-        } = reservaData;
-        
-        let updateFields = [];
-        let values = [];
+    // Actualizar reserva con validaciones
+    static async update(id, data) {
+        const fields = [];
+        const values = [];
 
-        if (fecha) {
-            updateFields.push('fecha = ?');
-            values.push(fecha);
-        }
-        if (hora) {
-            updateFields.push('hora = ?');
-            values.push(hora);
-        }
-        if (numero_personas !== undefined) {
-            updateFields.push('numero_personas = ?');
-            values.push(numero_personas);
-        }
-        if (estado) {
-            updateFields.push('estado = ?');
-            values.push(estado);
-        }
-        if (notas !== undefined) {
-            updateFields.push('notas = ?');
-            values.push(notas);
+        // Obtener reserva actual
+        const reservaActual = await this.findById(id);
+        if (!reservaActual) return null;
+
+        // Si se actualiza fecha, validar que el usuario no tenga otra reserva en esa fecha
+        if (data.fecha !== undefined && data.fecha !== reservaActual.fecha) {
+            const [existeUsuarioFecha] = await db.query(
+                `SELECT id_reserva FROM reserva 
+                 WHERE id_usuario = ? AND fecha = ? AND id_reserva != ?`,
+                [reservaActual.id_usuario, data.fecha, id]
+            );
+
+            if (existeUsuarioFecha.length > 0) {
+                throw new Error('Ya existe una reserva para este usuario en esta fecha');
+            }
         }
 
-        if (updateFields.length === 0) {
-            return null;
+        // Si se actualiza servicio, fecha u hora, validar disponibilidad
+        const nuevaFecha = data.fecha !== undefined ? data.fecha : reservaActual.fecha;
+        const nuevaHora = data.hora !== undefined ? data.hora : reservaActual.hora;
+        const nuevoServicio = data.id_servicio !== undefined ? data.id_servicio : reservaActual.id_servicio;
+
+        if (data.fecha !== undefined || data.hora !== undefined || data.id_servicio !== undefined) {
+            const [existeServicioFechaHora] = await db.query(
+                `SELECT id_reserva FROM reserva 
+                 WHERE id_servicio = ? AND fecha = ? AND hora = ? AND id_reserva != ?`,
+                [nuevoServicio, nuevaFecha, nuevaHora, id]
+            );
+
+            if (existeServicioFechaHora.length > 0) {
+                throw new Error('Ya existe una reserva para este servicio en esta fecha y hora');
+            }
         }
+
+        // Construir query de actualización
+        if (data.id_servicio !== undefined) { fields.push('id_servicio = ?'); values.push(data.id_servicio); }
+        if (data.fecha !== undefined) { fields.push('fecha = ?'); values.push(data.fecha); }
+        if (data.hora !== undefined) { fields.push('hora = ?'); values.push(data.hora); }
+        if (data.numero_personas !== undefined) { fields.push('numero_personas = ?'); values.push(data.numero_personas); }
+        if (data.estado !== undefined) { fields.push('estado = ?'); values.push(data.estado); }
+        if (data.notas !== undefined) { fields.push('notas = ?'); values.push(data.notas); }
+
+        if (fields.length === 0) return await this.findById(id);
 
         values.push(id);
-        const query = `UPDATE RESERVA SET ${updateFields.join(', ')} WHERE id_reserva = ?`;
-        
-        await db.query(query, values);
+        await db.query(
+            `UPDATE reserva SET ${fields.join(', ')} WHERE id_reserva = ?`,
+            values
+        );
+
         return await this.findById(id);
     }
 
-    // Actualizar solo el estado de la reserva
-    static async updateStatus(id, estado) {
-        await db.query(
-            'UPDATE RESERVA SET estado = ? WHERE id_reserva = ?',
+    // Actualizar solo el estado
+    static async updateEstado(id, estado) {
+        const [result] = await db.query(
+            `UPDATE reserva SET estado = ? WHERE id_reserva = ?`,
             [estado, id]
         );
+        
+        if (result.affectedRows === 0) return null;
         return await this.findById(id);
     }
 
     // Eliminar reserva
     static async delete(id) {
         const [result] = await db.query(
-            'DELETE FROM RESERVA WHERE id_reserva = ?',
+            'DELETE FROM reserva WHERE id_reserva = ?',
             [id]
         );
         return result.affectedRows > 0;
     }
 
-    // Verificar disponibilidad
-    static async checkAvailability(id_servicio, fecha, hora, numero_personas) {
-        // Verificar capacidad del servicio
-        const [servicio] = await db.query(
-            'SELECT capacidad FROM SERVICIO_RESTAURANTE WHERE id_servicio = ? AND esta_disponible = TRUE',
-            [id_servicio]
-        );
-
-        if (servicio.length === 0) {
-            return { available: false, reason: 'Servicio no disponible' };
-        }
-
-        // Contar personas ya reservadas para esa fecha y hora
-        const [reservas] = await db.query(`
-            SELECT SUM(numero_personas) as total_personas
-            FROM RESERVA
-            WHERE id_servicio = ? 
-            AND fecha = ? 
-            AND hora = ?
-            AND estado IN ('confirmada', 'pendiente')
-        `, [id_servicio, fecha, hora]);
-
-        const personasReservadas = reservas[0].total_personas || 0;
-        const capacidadDisponible = servicio[0].capacidad - personasReservadas;
-
-        if (capacidadDisponible < numero_personas) {
-            return { 
-                available: false, 
-                reason: `Solo hay ${capacidadDisponible} espacios disponibles`,
-                capacidadDisponible 
-            };
-        }
-
-        return { available: true, capacidadDisponible };
-    }
-
-    // Obtener estadísticas
+    // Estadísticas de reservas
     static async getStats() {
-        const [stats] = await db.query(`
+        const [rows] = await db.query(`
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) as pendientes,
                 SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas
-            FROM RESERVA
+                SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
+            FROM reserva
         `);
-        
-        return stats[0];
+        return rows[0];
     }
 
-    // Obtener reservas próximas (próximos 7 días)
-    static async getUpcoming(days = 7) {
-        const [reservas] = await db.query(`
-            SELECT 
-                r.*,
-                u.nombre as nombre_usuario,
-                s.nombre as nombre_servicio,
-                o.nombre_negocio
-            FROM RESERVA r
-            INNER JOIN USUARIO u ON r.id_usuario = u.id_usuario
-            INNER JOIN SERVICIO_RESTAURANTE s ON r.id_servicio = s.id_servicio
-            INNER JOIN OFERENTE o ON s.id_oferente = o.id_oferente
-            WHERE r.fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
-            AND r.estado IN ('pendiente', 'confirmada')
-            ORDER BY r.fecha ASC, r.hora ASC
-        `, [days]);
-        
-        return reservas;
+    // Verificar disponibilidad (útil antes de crear)
+    static async checkDisponibilidad(id_servicio, fecha, hora) {
+        const [rows] = await db.query(
+            `SELECT id_reserva FROM reserva 
+             WHERE id_servicio = ? AND fecha = ? AND hora = ? AND estado != 'cancelada'`,
+            [id_servicio, fecha, hora]
+        );
+        return rows.length === 0;
     }
 }
 

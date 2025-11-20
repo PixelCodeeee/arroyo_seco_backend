@@ -11,6 +11,8 @@ const serviciosRoutes = require('./routes/servicios');
 const productosRoutes = require('./routes/productos');
 const reservasRoutes = require('./routes/reservas');
 const paypalRoutes = require('./routes/paypal');
+const pedidoRoutes = require('./routes/pedido');
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -26,12 +28,14 @@ app.get('/', (req, res) => {
             oferentes: '/api/oferentes',
             servicios: '/api/servicios',
             productos: '/api/productos',
-            reservas: '/api/reservas'
+            reservas: '/api/reservas',
+            pedidos: '/api/pedido'
         }
     });
 });
 
 app.use('/api/paypal', paypalRoutes);
+app.use('/api/pedido', pedidoRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/oferentes', oferentesRoutes);
 app.use('/api/servicios', serviciosRoutes);

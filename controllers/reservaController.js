@@ -1,92 +1,98 @@
-// controllers/reservaController.js
 const Reserva = require('../models/Reserva');
-const ServicioRestaurante = require('../models/ServicioRestaurante');
 const Usuario = require('../models/Usuario');
+const ServicioRestaurante = require('../models/ServicioRestaurante');
 
-// Crear nueva reserva
+// Crear reserva
 exports.crearReserva = async (req, res) => {
     try {
-        const { 
-            id_usuario, 
-            id_servicio, 
-            fecha, 
-            hora, 
-            numero_personas, 
-            notas 
+        const {
+            id_usuario,
+            id_servicio,
+            fecha,
+            hora,
+            numero_personas,
+            estado = 'pendiente',
+            notas
         } = req.body;
 
-        // Validar campos requeridos
+        // Validaciones básicas
         if (!id_usuario || !id_servicio || !fecha || !hora || !numero_personas) {
             return res.status(400).json({ 
-                success: false,
-                error: 'Los campos id_usuario, id_servicio, fecha, hora y numero_personas son requeridos' 
+                error: "id_usuario, id_servicio, fecha, hora y numero_personas son requeridos" 
             });
         }
 
-        // Verificar que el usuario existe
+        // Validar que el usuario exista
         const usuario = await Usuario.findById(id_usuario);
         if (!usuario) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'El usuario especificado no existe' 
-            });
+            return res.status(404).json({ error: "El usuario no existe" });
         }
 
-        // Verificar que el servicio existe
+        // Validar que el servicio exista
         const servicio = await ServicioRestaurante.findById(id_servicio);
         if (!servicio) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'El servicio especificado no existe' 
-            });
+            return res.status(404).json({ error: "El servicio no existe" });
+        }
+
+        // Validar que el servicio esté disponible
+        if (servicio.estatus === 0) {
+            return res.status(400).json({ error: "El servicio no está disponible" });
         }
 
         // Validar número de personas
         if (numero_personas < 1) {
+            return res.status(400).json({ error: "El número de personas debe ser al menos 1" });
+        }
+
+        // Validar capacidad del servicio
+        if (servicio.capacidad && numero_personas > servicio.capacidad) {
             return res.status(400).json({ 
-                success: false,
-                error: 'El número de personas debe ser mayor a 0' 
+                error: `El servicio tiene capacidad máxima de ${servicio.capacidad} personas` 
             });
         }
 
-        // Verificar disponibilidad
-        const disponibilidad = await Reserva.checkAvailability(
-            id_servicio, 
-            fecha, 
-            hora, 
-            numero_personas
-        );
+        // Validar que la fecha no sea en el pasado
+        const fechaReserva = new Date(fecha);
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        if (fechaReserva < hoy) {
+            return res.status(400).json({ error: "No se pueden hacer reservas en fechas pasadas" });
+        }
 
-        if (!disponibilidad.available) {
-            return res.status(409).json({ 
-                success: false,
-                error: disponibilidad.reason,
-                capacidadDisponible: disponibilidad.capacidadDisponible 
+        // Validar estado
+        const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
+        if (estado && !estadosValidos.includes(estado)) {
+            return res.status(400).json({ 
+                error: "Estado inválido. Valores permitidos: pendiente, confirmada, cancelada" 
             });
         }
 
-        // Crear reserva
-        const reserva = await Reserva.create({ 
-            id_usuario, 
-            id_servicio, 
-            fecha, 
-            hora, 
-            numero_personas, 
-            estado: 'pendiente',
-            notas 
+        // Crear reserva (las validaciones de unicidad se hacen en el modelo)
+        const reserva = await Reserva.create({
+            id_usuario,
+            id_servicio,
+            fecha,
+            hora,
+            numero_personas,
+            estado,
+            notas
         });
 
-        res.status(201).json({
-            success: true,
-            message: 'Reserva creada exitosamente',
-            data: reserva
+        res.status(201).json({ 
+            message: "Reserva creada exitosamente", 
+            reserva 
         });
+
     } catch (error) {
-        console.error('Error creating reserva:', error);
-        res.status(500).json({ 
-            success: false,
-            error: error.message || 'Error al crear reserva' 
-        });
+        console.error("Error creating reserva:", error);
+        
+        // Manejar errores de validación de unicidad
+        if (error.message.includes('Ya existe una reserva')) {
+            return res.status(409).json({ error: error.message });
+        }
+        
+        res.status(500).json({ error: "Error al crear reserva" });
     }
 };
 
@@ -95,19 +101,15 @@ exports.obtenerReservas = async (req, res) => {
     try {
         const reservas = await Reserva.findAll();
         const stats = await Reserva.getStats();
-        
+
         res.json({
-            success: true,
             total: reservas.length,
             stats,
-            data: reservas
+            reservas
         });
     } catch (error) {
         console.error('Error fetching reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas' 
-        });
+        res.status(500).json({ error: 'Error al obtener reservas' });
     }
 };
 
@@ -117,81 +119,58 @@ exports.obtenerReservaPorId = async (req, res) => {
         const reserva = await Reserva.findById(req.params.id);
 
         if (!reserva) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Reserva no encontrada' 
-            });
+            return res.status(404).json({ error: 'Reserva no encontrada' });
         }
 
-        res.json({
-            success: true,
-            data: reserva
-        });
+        res.json(reserva);
     } catch (error) {
         console.error('Error fetching reserva:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reserva' 
-        });
+        res.status(500).json({ error: 'Error al obtener reserva' });
     }
 };
 
 // Obtener reservas por usuario
 exports.obtenerReservasPorUsuario = async (req, res) => {
     try {
-        const reservas = await Reserva.findByUserId(req.params.userId);
+        const reservas = await Reserva.findByUsuarioId(req.params.usuarioId);
 
         res.json({
-            success: true,
             total: reservas.length,
-            data: reservas
+            reservas
         });
     } catch (error) {
         console.error('Error fetching reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas' 
-        });
+        res.status(500).json({ error: 'Error al obtener reservas del usuario' });
     }
 };
 
 // Obtener reservas por servicio
 exports.obtenerReservasPorServicio = async (req, res) => {
     try {
-        const reservas = await Reserva.findByServiceId(req.params.serviceId);
+        const reservas = await Reserva.findByServicioId(req.params.servicioId);
 
         res.json({
-            success: true,
             total: reservas.length,
-            data: reservas
+            reservas
         });
     } catch (error) {
         console.error('Error fetching reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas' 
-        });
+        res.status(500).json({ error: 'Error al obtener reservas del servicio' });
     }
 };
 
-// Obtener reservas por fecha
-exports.obtenerReservasPorFecha = async (req, res) => {
+// Obtener reservas por oferente
+exports.obtenerReservasPorOferente = async (req, res) => {
     try {
-        const { fecha } = req.params;
-        const reservas = await Reserva.findByDate(fecha);
+        const reservas = await Reserva.findByOferenteId(req.params.oferenteId);
 
         res.json({
-            success: true,
             total: reservas.length,
-            fecha,
-            data: reservas
+            reservas
         });
     } catch (error) {
         console.error('Error fetching reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas' 
-        });
+        res.status(500).json({ error: 'Error al obtener reservas del oferente' });
     }
 };
 
@@ -200,171 +179,170 @@ exports.obtenerReservasPorEstado = async (req, res) => {
     try {
         const { estado } = req.params;
         
-        // Validar estado
-        const estadosValidos = ['pendiente', 'confirmada', 'cancelada', 'completada'];
+        const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
         if (!estadosValidos.includes(estado)) {
-            return res.status(400).json({
-                success: false,
-                error: `Estado inválido. Estados válidos: ${estadosValidos.join(', ')}`
+            return res.status(400).json({ 
+                error: "Estado inválido. Valores permitidos: pendiente, confirmada, cancelada" 
             });
         }
 
-        const reservas = await Reserva.findByStatus(estado);
+        const reservas = await Reserva.findByEstado(estado);
 
         res.json({
-            success: true,
             total: reservas.length,
             estado,
-            data: reservas
+            reservas
         });
     } catch (error) {
         console.error('Error fetching reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas' 
-        });
-    }
-};
-
-// Obtener reservas próximas
-exports.obtenerReservasProximas = async (req, res) => {
-    try {
-        const days = req.query.days || 7;
-        const reservas = await Reserva.getUpcoming(days);
-
-        res.json({
-            success: true,
-            total: reservas.length,
-            days,
-            data: reservas
-        });
-    } catch (error) {
-        console.error('Error fetching upcoming reservas:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al obtener reservas próximas' 
-        });
+        res.status(500).json({ error: 'Error al obtener reservas por estado' });
     }
 };
 
 // Actualizar reserva
 exports.actualizarReserva = async (req, res) => {
     try {
-        const { 
-            fecha, 
-            hora, 
-            numero_personas, 
+        const {
+            id_servicio,
+            fecha,
+            hora,
+            numero_personas,
             estado,
-            notas 
+            notas
         } = req.body;
-        const reservaId = req.params.id;
 
-        // Verificar si la reserva existe
-        const existingReserva = await Reserva.findById(reservaId);
-        if (!existingReserva) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Reserva no encontrada' 
-            });
+        const id = req.params.id;
+
+        // Verificar que la reserva existe
+        const reserva = await Reserva.findById(id);
+        if (!reserva) {
+            return res.status(404).json({ error: "Reserva no encontrada" });
         }
 
-        // Validar número de personas si se proporciona
+        // Si se actualiza el servicio, validar que exista
+        if (id_servicio !== undefined) {
+            const servicio = await ServicioRestaurante.findById(id_servicio);
+            if (!servicio) {
+                return res.status(404).json({ error: "El servicio no existe" });
+            }
+            if (servicio.estatus === 0) {
+                return res.status(400).json({ error: "El servicio no está disponible" });
+            }
+        }
+
+        // Validar número de personas
         if (numero_personas !== undefined && numero_personas < 1) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'El número de personas debe ser mayor a 0' 
-            });
+            return res.status(400).json({ error: "El número de personas debe ser al menos 1" });
         }
 
-        // Si se cambia fecha, hora o número de personas, verificar disponibilidad
-        if (fecha || hora || numero_personas) {
-            const nuevaFecha = fecha || existingReserva.fecha;
-            const nuevaHora = hora || existingReserva.hora;
-            const nuevoNumero = numero_personas || existingReserva.numero_personas;
+        // Validar fecha
+        if (fecha !== undefined) {
+            const fechaReserva = new Date(fecha);
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            
+            if (fechaReserva < hoy) {
+                return res.status(400).json({ error: "No se pueden hacer reservas en fechas pasadas" });
+            }
+        }
 
-            const disponibilidad = await Reserva.checkAvailability(
-                existingReserva.id_servicio,
-                nuevaFecha,
-                nuevaHora,
-                nuevoNumero
-            );
-
-            if (!disponibilidad.available) {
-                return res.status(409).json({ 
-                    success: false,
-                    error: disponibilidad.reason,
-                    capacidadDisponible: disponibilidad.capacidadDisponible 
+        // Validar estado
+        if (estado !== undefined) {
+            const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
+            if (!estadosValidos.includes(estado)) {
+                return res.status(400).json({ 
+                    error: "Estado inválido. Valores permitidos: pendiente, confirmada, cancelada" 
                 });
             }
         }
 
-        // Actualizar reserva
-        const reserva = await Reserva.update(reservaId, { 
-            fecha, 
-            hora, 
-            numero_personas, 
+        const actualizada = await Reserva.update(id, {
+            id_servicio,
+            fecha,
+            hora,
+            numero_personas,
             estado,
-            notas 
+            notas
         });
 
-        if (!reserva) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'No hay campos para actualizar' 
-            });
+        if (!actualizada) {
+            return res.status(404).json({ error: "No se pudo actualizar la reserva" });
         }
 
-        res.json({
-            success: true,
-            message: 'Reserva actualizada exitosamente',
-            data: reserva
+        res.json({ 
+            message: "Reserva actualizada exitosamente", 
+            reserva: actualizada 
         });
+
     } catch (error) {
-        console.error('Error updating reserva:', error);
-        res.status(500).json({ 
-            success: false,
-            error: error.message || 'Error al actualizar reserva' 
-        });
+        console.error("Error updating reserva:", error);
+        
+        // Manejar errores de validación de unicidad
+        if (error.message.includes('Ya existe una reserva')) {
+            return res.status(409).json({ error: error.message });
+        }
+        
+        res.status(500).json({ error: "Error al actualizar reserva" });
     }
 };
 
-// Actualizar estado de reserva
-exports.actualizarEstadoReserva = async (req, res) => {
+// Cambiar estado de reserva (endpoint específico)
+exports.cambiarEstado = async (req, res) => {
     try {
         const { estado } = req.body;
-        const reservaId = req.params.id;
+        const id = req.params.id;
 
-        // Validar estado
-        const estadosValidos = ['pendiente', 'confirmada', 'cancelada', 'completada'];
+        if (!estado) {
+            return res.status(400).json({ error: "El estado es requerido" });
+        }
+
+        const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
         if (!estadosValidos.includes(estado)) {
-            return res.status(400).json({
-                success: false,
-                error: `Estado inválido. Estados válidos: ${estadosValidos.join(', ')}`
+            return res.status(400).json({ 
+                error: "Estado inválido. Valores permitidos: pendiente, confirmada, cancelada" 
             });
         }
 
-        // Verificar si la reserva existe
-        const existingReserva = await Reserva.findById(reservaId);
-        if (!existingReserva) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Reserva no encontrada' 
-            });
+        const reserva = await Reserva.updateEstado(id, estado);
+
+        if (!reserva) {
+            return res.status(404).json({ error: "Reserva no encontrada" });
         }
 
-        const reserva = await Reserva.updateStatus(reservaId, estado);
-
-        res.json({
-            success: true,
-            message: `Estado de reserva actualizado a ${estado}`,
-            data: reserva
+        res.json({ 
+            message: `Reserva ${estado} exitosamente`, 
+            reserva 
         });
+
     } catch (error) {
-        console.error('Error updating reserva status:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al actualizar estado de reserva' 
+        console.error("Error changing estado:", error);
+        res.status(500).json({ error: "Error al cambiar estado de reserva" });
+    }
+};
+
+// Verificar disponibilidad
+exports.verificarDisponibilidad = async (req, res) => {
+    try {
+        const { id_servicio, fecha, hora } = req.query;
+
+        if (!id_servicio || !fecha || !hora) {
+            return res.status(400).json({ 
+                error: "id_servicio, fecha y hora son requeridos" 
+            });
+        }
+
+        const disponible = await Reserva.checkDisponibilidad(id_servicio, fecha, hora);
+
+        res.json({ 
+            disponible,
+            message: disponible 
+                ? "El horario está disponible" 
+                : "El horario no está disponible"
         });
+
+    } catch (error) {
+        console.error("Error checking disponibilidad:", error);
+        res.status(500).json({ error: "Error al verificar disponibilidad" });
     }
 };
 
@@ -374,54 +352,15 @@ exports.eliminarReserva = async (req, res) => {
         const deleted = await Reserva.delete(req.params.id);
 
         if (!deleted) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Reserva no encontrada' 
-            });
+            return res.status(404).json({ error: 'Reserva no encontrada' });
         }
 
         res.json({ 
-            success: true,
             message: 'Reserva eliminada exitosamente',
             id_reserva: req.params.id
         });
     } catch (error) {
         console.error('Error deleting reserva:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al eliminar reserva' 
-        });
-    }
-};
-
-// Verificar disponibilidad
-exports.verificarDisponibilidad = async (req, res) => {
-    try {
-        const { id_servicio, fecha, hora, numero_personas } = req.query;
-
-        if (!id_servicio || !fecha || !hora || !numero_personas) {
-            return res.status(400).json({
-                success: false,
-                error: 'Todos los parámetros son requeridos: id_servicio, fecha, hora, numero_personas'
-            });
-        }
-
-        const disponibilidad = await Reserva.checkAvailability(
-            id_servicio,
-            fecha,
-            hora,
-            parseInt(numero_personas)
-        );
-
-        res.json({
-            success: true,
-            ...disponibilidad
-        });
-    } catch (error) {
-        console.error('Error checking availability:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Error al verificar disponibilidad' 
-        });
+        res.status(500).json({ error: 'Error al eliminar reserva' });
     }
 };
