@@ -1,16 +1,26 @@
 const mysql = require('mysql2');
 
-// Create connection pool
-const pool = mysql.createPool({
-    host: 'localhost',
-    port: 3306,
-    user: 'root',
-    password: 'AlphaPrime1.',
-    database: 'arroyo_seco',
+// Database configuration
+const dbConfig = {
+    host: process.env.MYSQL_ADDON_HOST || 'localhost',
+    port: process.env.MYSQL_ADDON_PORT || 3306,
+    user: process.env.MYSQL_ADDON_USER || 'root',
+    password: process.env.MYSQL_ADDON_PASSWORD || 'AlphaPrime1.',
+    database: process.env.MYSQL_ADDON_DB || 'arroyo_seco',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
-});
+};
+
+// Add SSL for production (Clever Cloud requires it)
+if (process.env.NODE_ENV === 'production' && process.env.MYSQL_ADDON_HOST) {
+    dbConfig.ssl = {
+        rejectUnauthorized: false // Clever Cloud uses self-signed certificates
+    };
+}
+
+// Create connection pool
+const pool = mysql.createPool(dbConfig);
 
 // Get promise-based connection
 const promisePool = pool.promise();
@@ -18,10 +28,14 @@ const promisePool = pool.promise();
 // Test connection
 pool.getConnection((err, connection) => {
     if (err) {
-        console.error('Error connecting to database:', err.message);
+        console.error('❌ Error connecting to database:', err.message);
         return;
     }
-    console.log('✓ Connected to MySQL database');
+    
+    const dbName = process.env.MYSQL_ADDON_DB || 'arroyo_seco';
+    const host = process.env.MYSQL_ADDON_HOST || 'localhost';
+    
+    console.log(`✓ Connected to MySQL database: ${dbName} on ${host}`);
     connection.release();
 });
 

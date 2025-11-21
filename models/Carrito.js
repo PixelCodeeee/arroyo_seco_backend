@@ -20,9 +20,9 @@ class Carrito {
         o.id_oferente,
         cat.nombre as categoria_nombre
       FROM CARRITO c
-      INNER JOIN PRODUCTO p ON c.id_producto = p.id_producto
-      INNER JOIN OFERENTE o ON p.id_oferente = o.id_oferente
-      LEFT JOIN CATEGORIA cat ON p.id_categoria = cat.id_categoria
+      INNER JOIN producto p ON c.id_producto = p.id_producto
+      INNER JOIN oferente o ON p.id_oferente = o.id_oferente
+      LEFT JOIN categoria cat ON p.id_categoria = cat.id_categoria
       WHERE c.id_usuario = ?
       ORDER BY c.fecha_agregado DESC
     `;
@@ -106,7 +106,7 @@ class Carrito {
     const query = `
       SELECT SUM(p.precio * c.cantidad) as total
       FROM CARRITO c
-      INNER JOIN PRODUCTO p ON c.id_producto = p.id_producto
+      INNER JOIN producto p ON c.id_producto = p.id_producto
       WHERE c.id_usuario = ? AND p.esta_disponible = TRUE
     `;
     
@@ -137,7 +137,7 @@ class Carrito {
         p.inventario,
         p.esta_disponible
       FROM CARRITO c
-      INNER JOIN PRODUCTO p ON c.id_producto = p.id_producto
+      INNER JOIN producto p ON c.id_producto = p.id_producto
       WHERE c.id_usuario = ?
     `;
     
@@ -160,7 +160,7 @@ class Carrito {
   }
 
   // Obtener carrito agrupado por oferente (útil para crear pedidos separados)
-  static async getCarritoAgrupadoPorOferente(id_usuario) {
+  static async getCarritoAgrupadoPoroferente(id_usuario) {
     const query = `
       SELECT 
         c.id_carrito,
@@ -173,8 +173,8 @@ class Carrito {
         o.nombre_negocio,
         o.direccion
       FROM CARRITO c
-      INNER JOIN PRODUCTO p ON c.id_producto = p.id_producto
-      INNER JOIN OFERENTE o ON p.id_oferente = o.id_oferente
+      INNER JOIN producto p ON c.id_producto = p.id_producto
+      INNER JOIN oferente o ON p.id_oferente = o.id_oferente
       WHERE c.id_usuario = ? AND p.esta_disponible = TRUE
       ORDER BY o.id_oferente, c.fecha_agregado DESC
     `;

@@ -13,13 +13,13 @@ class Codigo2FA {
 
         // Delete any existing unused codes for this user
         await db.query(
-            'DELETE FROM CODIGO_2FA WHERE id_usuario = ? AND usado = FALSE',
+            'DELETE FROM codigo_2fa WHERE id_usuario = ? AND usado = FALSE',
             [userId]
         );
 
         // Insert new code
         await db.query(
-            'INSERT INTO CODIGO_2FA (id_usuario, codigo, fecha_expiracion) VALUES (?, ?, ?)',
+            'INSERT INTO codigo_2fa (id_usuario, codigo, fecha_expiracion) VALUES (?, ?, ?)',
             [userId, codigo, fecha_expiracion]
         );
 
@@ -29,7 +29,7 @@ class Codigo2FA {
     // Verify code
     static async verify(userId, codigo) {
         const [results] = await db.query(
-            `SELECT * FROM CODIGO_2FA 
+            `SELECT * FROM codigo_2fa 
              WHERE id_usuario = ? 
              AND codigo = ? 
              AND usado = FALSE 
@@ -43,7 +43,7 @@ class Codigo2FA {
 
         // Mark code as used
         await db.query(
-            'UPDATE CODIGO_2FA SET usado = TRUE WHERE id = ?',
+            'UPDATE codigo_2fa SET usado = TRUE WHERE id = ?',
             [results[0].id]
         );
 
@@ -52,7 +52,7 @@ class Codigo2FA {
 
     // Clean expired codes (run periodically)
     static async cleanExpired() {
-        await db.query('DELETE FROM CODIGO_2FA WHERE fecha_expiracion < NOW()');
+        await db.query('DELETE FROM codigo_2fa WHERE fecha_expiracion < NOW()');
     }
 }
 

@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-class Oferente {
+class oferente {
 
     // Crear oferente
     static async create(oferenteData) {
@@ -18,7 +18,7 @@ class Oferente {
             : horario_disponibilidad;
 
         const [result] = await db.query(
-            `INSERT INTO OFERENTE 
+            `INSERT INTO oferente 
             (id_usuario, nombre_negocio, direccion, tipo, horario_disponibilidad, imagen, telefono) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [id_usuario, nombre_negocio, direccion, tipo, horarioJSON, imagen || null, telefono || null]
@@ -43,8 +43,8 @@ class Oferente {
                 o.telefono,
                 u.nombre AS nombre_usuario,
                 u.correo AS correo_usuario
-            FROM OFERENTE o
-            INNER JOIN USUARIO u ON o.id_usuario = u.id_usuario
+            FROM oferente o
+            INNER JOIN usuario u ON o.id_usuario = u.id_usuario
             ORDER BY o.id_oferente DESC
         `);
 
@@ -74,8 +74,8 @@ class Oferente {
                 o.telefono,
                 u.nombre AS nombre_usuario,
                 u.correo AS correo_usuario
-            FROM OFERENTE o
-            INNER JOIN USUARIO u ON o.id_usuario = u.id_usuario
+            FROM oferente o
+            INNER JOIN usuario u ON o.id_usuario = u.id_usuario
             WHERE 1=1
         `;
 
@@ -119,8 +119,8 @@ class Oferente {
                 o.telefono,
                 u.nombre AS nombre_usuario,
                 u.correo AS correo_usuario
-            FROM OFERENTE o
-            INNER JOIN USUARIO u ON o.id_usuario = u.id_usuario
+            FROM oferente o
+            INNER JOIN usuario u ON o.id_usuario = u.id_usuario
             WHERE o.id_oferente = ?
         `, [id]);
 
@@ -156,7 +156,7 @@ class Oferente {
                 o.horario_disponibilidad,
                 o.imagen,
                 o.telefono
-            FROM OFERENTE o
+            FROM oferente o
             WHERE o.id_usuario = ?
         `, [userId]);
 
@@ -227,7 +227,7 @@ class Oferente {
         values.push(id);
 
         await db.query(
-            `UPDATE OFERENTE SET ${fields.join(', ')} WHERE id_oferente = ?`,
+            `UPDATE oferente SET ${fields.join(', ')} WHERE id_oferente = ?`,
             values
         );
 
@@ -243,7 +243,7 @@ class Oferente {
         }
 
         await db.query(
-            `UPDATE OFERENTE SET estado = ? WHERE id_oferente = ?`,
+            `UPDATE oferente SET estado = ? WHERE id_oferente = ?`,
             [estado, id]
         );
 
@@ -254,7 +254,7 @@ class Oferente {
     // Update imagen específico
     static async updateImagen(id, imagenUrl) {
         await db.query(
-            'UPDATE OFERENTE SET imagen = ? WHERE id_oferente = ?',
+            'UPDATE oferente SET imagen = ? WHERE id_oferente = ?',
             [imagenUrl, id]
         );
         return await this.findById(id);
@@ -264,7 +264,7 @@ class Oferente {
     // Eliminar
     static async delete(id) {
         const [result] = await db.query(
-            'DELETE FROM OFERENTE WHERE id_oferente = ?',
+            'DELETE FROM oferente WHERE id_oferente = ?',
             [id]
         );
 
@@ -272,4 +272,4 @@ class Oferente {
     }
 }
 
-module.exports = Oferente;
+module.exports = oferente;

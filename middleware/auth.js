@@ -26,7 +26,7 @@ const verifyToken = (req, res, next) => {
 };
 
 // Verify if user is an oferente
-const verifyOferente = async (req, res, next) => {
+const verifyoferente = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     
@@ -49,14 +49,14 @@ const verifyOferente = async (req, res, next) => {
 
     // Get oferente info from database
     const [oferentes] = await db.query(
-      'SELECT * FROM OFERENTE WHERE id_usuario = ?',
+      'SELECT * FROM oferente WHERE id_usuario = ?',
       [decoded.id]
     );
 
     if (oferentes.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Oferente no encontrado. Por favor completa tu perfil de oferente.'
+        message: 'oferente no encontrado. Por favor completa tu perfil de oferente.'
       });
     }
 
@@ -64,7 +64,7 @@ const verifyOferente = async (req, res, next) => {
     req.oferente = oferentes[0];
     next();
   } catch (error) {
-    console.error('Error in verifyOferente middleware:', error);
+    console.error('Error in verifyoferente middleware:', error);
     return res.status(401).json({
       success: false,
       message: 'Token inválido o expirado',
@@ -137,7 +137,7 @@ const verifyTurista = async (req, res, next) => {
 
 module.exports = {
   verifyToken,
-  verifyOferente,
+  verifyoferente,
   verifyAdmin,
   verifyTurista
 };

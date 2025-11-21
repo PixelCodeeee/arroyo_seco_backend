@@ -1,9 +1,9 @@
-//models/Usuario.js
+//models/usuario.js
 
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
 
-class Usuario {
+class usuario {
     // Create new user
     static async create(userData) {
         const { correo, contrasena, nombre, rol } = userData;
@@ -13,7 +13,7 @@ class Usuario {
         const contrasena_hash = await bcrypt.hash(contrasena, saltRounds);
         
         const [result] = await db.query(
-            'INSERT INTO USUARIO (correo, contrasena_hash, nombre, rol) VALUES (?, ?, ?, ?)',
+            'INSERT INTO usuario (correo, contrasena_hash, nombre, rol) VALUES (?, ?, ?, ?)',
             [correo, contrasena_hash, nombre, rol]
         );
         
@@ -29,7 +29,7 @@ class Usuario {
     // Find all users
     static async findAll() {
         const [usuarios] = await db.query(
-            'SELECT id_usuario, correo, nombre, rol, fecha_creacion, esta_activo FROM USUARIO'
+            'SELECT id_usuario, correo, nombre, rol, fecha_creacion, esta_activo FROM usuario'
         );
         return usuarios;
     }
@@ -37,7 +37,7 @@ class Usuario {
     // Find user by ID
     static async findById(id) {
         const [usuarios] = await db.query(
-            'SELECT id_usuario, correo, nombre, rol, fecha_creacion, esta_activo FROM USUARIO WHERE id_usuario = ?',
+            'SELECT id_usuario, correo, nombre, rol, fecha_creacion, esta_activo FROM usuario WHERE id_usuario = ?',
             [id]
         );
         return usuarios[0] || null;
@@ -46,7 +46,7 @@ class Usuario {
     // Find user by email
     static async findByEmail(correo) {
         const [usuarios] = await db.query(
-            'SELECT * FROM USUARIO WHERE correo = ?',
+            'SELECT * FROM usuario WHERE correo = ?',
             [correo]
         );
         return usuarios[0] || null;
@@ -86,7 +86,7 @@ class Usuario {
         }
 
         values.push(id);
-        const query = `UPDATE USUARIO SET ${updateFields.join(', ')} WHERE id_usuario = ?`;
+        const query = `UPDATE usuario SET ${updateFields.join(', ')} WHERE id_usuario = ?`;
         
         await db.query(query, values);
         return await this.findById(id);
@@ -95,7 +95,7 @@ class Usuario {
     // Delete user
     static async delete(id) {
         const [result] = await db.query(
-            'DELETE FROM USUARIO WHERE id_usuario = ?',
+            'DELETE FROM usuario WHERE id_usuario = ?',
             [id]
         );
         return result.affectedRows > 0;
@@ -108,7 +108,7 @@ class Usuario {
 
     // Check if email exists
     static async emailExists(correo, excludeId = null) {
-        let query = 'SELECT id_usuario FROM USUARIO WHERE correo = ?';
+        let query = 'SELECT id_usuario FROM usuario WHERE correo = ?';
         let params = [correo];
         
         if (excludeId) {
@@ -121,4 +121,4 @@ class Usuario {
     }
 }
 
-module.exports = Usuario;
+module.exports = usuario;
