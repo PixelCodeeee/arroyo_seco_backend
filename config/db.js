@@ -8,7 +8,7 @@ const dbConfig = {
     password: process.env.MYSQL_ADDON_PASSWORD || 'AlphaPrime1.',
     database: process.env.MYSQL_ADDON_DB || 'arroyo_seco',
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 5,
     queueLimit: 0
 };
 
